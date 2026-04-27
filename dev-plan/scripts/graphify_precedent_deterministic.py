@@ -260,7 +260,10 @@ def extract_case_refs(body: str) -> list[str]:
 def load_docs() -> tuple[list[dict], dict]:
     """Load all precedent .md files; extract law/case refs per doc."""
     # Structure: {사건종류}/{법원등급}/*.md  (also README.md at root)
-    md_files = [ROOT / "README.md"] + sorted(ROOT.glob("*/*/*.md"))
+    md_files = [ROOT / "README.md"] + sorted(
+        path for path in ROOT.glob("*/*/*.md")
+        if path.relative_to(ROOT).parts[0] not in {"graphify-out", ".git"}
+    )
     docs: list[dict] = []
     law_ref_counter: Counter[str] = Counter()
     case_ref_counter: Counter[str] = Counter()
