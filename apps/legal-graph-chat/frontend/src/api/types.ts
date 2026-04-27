@@ -120,6 +120,48 @@ export interface GraphPayloadDTO {
   warnings?: string[];
 }
 
+export interface EdgeTileResponse {
+  graph: GraphKey | string;
+  edge_mode: EdgeMode;
+  tile: number;
+  tile_size: number;
+  returned_edges: number;
+  total_edges: number;
+  has_more: boolean;
+  focus_node_id?: string | null;
+  nodes_in_scope?: number | null;
+  lod_layer?: string | null;
+  edges: GraphEdgeDTO[];
+  edgeSourceIndices?: Uint32Array;
+  edgeTargetIndices?: Uint32Array;
+  edgeLayers?: Uint8Array;
+  node_order_hash?: string;
+  binary?: boolean;
+  warnings: string[];
+}
+
+export interface StaticGraphEdgeBuffers {
+  sourceIndices: Uint32Array;
+  targetIndices: Uint32Array;
+  layers: Uint8Array;
+  count: number;
+  totalEdges?: number;
+  tileCount?: number;
+  memoryBytes?: number;
+}
+
+export interface GraphBinaryWorkerStats {
+  initialized: boolean;
+  graph?: GraphKey | string;
+  layout_mode?: StaticLayoutMode;
+  edge_mode?: EdgeMode;
+  node_count: number;
+  payload_bytes: number;
+  node_order_hash?: string;
+  scope_key?: string;
+  edge_tile_count: number;
+}
+
 export interface EvidenceItem {
   id: string;
   label: string;

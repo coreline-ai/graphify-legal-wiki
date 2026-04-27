@@ -125,7 +125,15 @@ def is_sensitive_or_mutating(request: Request) -> bool:
         return False
     if request.method != "GET":
         return True
-    return request.url.path in {"/source", "/precedents/source", "/graph/full-3d"}
+    return request.url.path in {
+        "/source",
+        "/precedents/source",
+        "/graph/full-3d",
+        "/graph/full-3d/edge-tile",
+        "/graph/full-3d/edge-tile/binary",
+        "/graph/full-3d/binary",
+        "/graph/full-3d/nodes/binary",
+    }
 
 
 def request_identity(request: Request) -> str:
@@ -324,6 +332,145 @@ def full_graph_3d(
         static_layout=static_layout,
         static_layout_mode=static_layout_mode,
     )
+
+
+@app.get("/graph/full-3d/edge-tile")
+def full_graph_edge_tile(
+    response: Response,
+    edge_mode: EdgeMode = Query(default="all"),
+    focus_node_id: str | None = Query(default=None, max_length=240),
+    confirm_all_edges: bool = Query(default=False),
+    tile: int = Query(default=0, ge=0, le=10000),
+    tile_size: int = Query(default=25000, ge=1, le=100000),
+    node_limit: int | None = Query(default=None, ge=1, le=200000),
+    min_degree: int | None = Query(default=None, ge=0),
+    community_id: str | None = Query(default=None),
+    lod_layer: str | None = Query(default=None, pattern="^(all|backbone|context|density|focus)$"),
+    graph: str = Query(default="legalize-kr"),
+):
+    graph_service = service_for_graph(graph)
+    set_cache_headers(
+        response,
+        "full-3d-edge-tile",
+        max_age=120,
+        extra=f"{edge_mode}:{focus_node_id or ''}:{confirm_all_edges}:{tile}:{tile_size}:{node_limit}:{min_degree}:{community_id or ''}:{lod_layer or ''}",
+        graph_service=graph_service,
+    )
+    return graph_service.full_graph_edge_tile(
+        edge_mode=edge_mode,
+        focus_node_id=focus_node_id,
+        confirm_all_edges=confirm_all_edges,
+        tile=tile,
+        tile_size=tile_size,
+        node_limit=node_limit,
+        min_degree=min_degree,
+        community_id=community_id,
+        lod_layer=lod_layer,
+    )
+
+
+@app.get("/graph/full-3d/edge-tile/binary")
+def full_graph_edge_tile_binary(
+    edge_mode: EdgeMode = Query(default="all"),
+    focus_node_id: str | None = Query(default=None, max_length=240),
+    confirm_all_edges: bool = Query(default=False),
+    tile: int = Query(default=0, ge=0, le=10000),
+    tile_size: int = Query(default=25000, ge=1, le=100000),
+    node_limit: int | None = Query(default=None, ge=1, le=200000),
+    min_degree: int | None = Query(default=None, ge=0),
+    community_id: str | None = Query(default=None),
+    lod_layer: str | None = Query(default=None, pattern="^(all|backbone|context|density|focus)$"),
+    graph: str = Query(default="legalize-kr"),
+):
+    graph_service = service_for_graph(graph)
+    body, binary_headers = graph_service.full_graph_edge_tile_binary(
+        edge_mode=edge_mode,
+        focus_node_id=focus_node_id,
+        confirm_all_edges=confirm_all_edges,
+        tile=tile,
+        tile_size=tile_size,
+        node_limit=node_limit,
+        min_degree=min_degree,
+        community_id=community_id,
+        lod_layer=lod_layer,
+    )
+    binary_response = Response(content=body, media_type="application/octet-stream")
+    set_cache_headers(
+        binary_response,
+        "full-3d-edge-tile-binary",
+        max_age=120,
+        extra=f"{edge_mode}:{focus_node_id or ''}:{confirm_all_edges}:{tile}:{tile_size}:{node_limit}:{min_degree}:{community_id or ''}:{lod_layer or ''}",
+        graph_service=graph_service,
+    )
+    for key, value in binary_headers.items():
+        binary_response.headers[key] = value
+    return binary_response
+
+
+@app.get("/graph/full-3d/binary")
+def full_graph_3d_binary(
+    edge_mode: EdgeMode = Query(default="hidden"),
+    focus_node_id: str | None = Query(default=None, max_length=240),
+    confirm_all_edges: bool = Query(default=False),
+    node_limit: int | None = Query(default=None, ge=1, le=200000),
+    edge_limit: int | None = Query(default=None, ge=0, le=200000),
+    min_degree: int | None = Query(default=None, ge=0),
+    community_id: str | None = Query(default=None),
+    static_layout_mode: LayoutMode = Query(default="spherical"),
+    graph: str = Query(default="legalize-kr"),
+):
+    graph_service = service_for_graph(graph)
+    body, binary_headers = graph_service.full_graph_3d_binary(
+        edge_mode=edge_mode,
+        focus_node_id=focus_node_id,
+        confirm_all_edges=confirm_all_edges,
+        node_limit=node_limit,
+        edge_limit=edge_limit,
+        min_degree=min_degree,
+        community_id=community_id,
+        static_layout_mode=static_layout_mode,
+    )
+    binary_response = Response(content=body, media_type="application/octet-stream")
+    set_cache_headers(
+        binary_response,
+        "full-3d-binary",
+        max_age=120,
+        extra=f"{edge_mode}:{focus_node_id or ''}:{confirm_all_edges}:{node_limit}:{edge_limit}:{min_degree}:{community_id or ''}:{static_layout_mode}",
+        graph_service=graph_service,
+    )
+    for key, value in binary_headers.items():
+        binary_response.headers[key] = value
+    return binary_response
+
+
+@app.get("/graph/full-3d/nodes/binary")
+def full_graph_3d_nodes_binary(
+    focus_node_id: str | None = Query(default=None, max_length=240),
+    node_limit: int | None = Query(default=None, ge=1, le=200000),
+    min_degree: int | None = Query(default=None, ge=0),
+    community_id: str | None = Query(default=None),
+    static_layout_mode: LayoutMode = Query(default="spherical"),
+    graph: str = Query(default="legalize-kr"),
+):
+    graph_service = service_for_graph(graph)
+    body, binary_headers = graph_service.full_graph_nodes_binary(
+        focus_node_id=focus_node_id,
+        node_limit=node_limit,
+        min_degree=min_degree,
+        community_id=community_id,
+        static_layout_mode=static_layout_mode,
+    )
+    binary_response = Response(content=body, media_type="application/octet-stream")
+    set_cache_headers(
+        binary_response,
+        "full-3d-nodes-binary",
+        max_age=120,
+        extra=f"{focus_node_id or ''}:{node_limit}:{min_degree}:{community_id or ''}:{static_layout_mode}",
+        graph_service=graph_service,
+    )
+    for key, value in binary_headers.items():
+        binary_response.headers[key] = value
+    return binary_response
 
 
 @app.get("/suggested-questions")

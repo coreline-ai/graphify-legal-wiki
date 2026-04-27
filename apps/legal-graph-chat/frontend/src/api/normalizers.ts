@@ -3,6 +3,8 @@ import type {
   AnswerResponse,
   Citation,
   CommunityPayloadDTO,
+  EdgeMode,
+  EdgeTileResponse,
   EvidenceItem,
   GraphEdgeDTO,
   GraphNodeDTO,
@@ -158,6 +160,27 @@ export function normalizeGraphPayload(raw: unknown): GraphPayloadDTO {
     label: stringFrom(record.label ?? record.title, ''),
     generated_at: stringFrom(record.generated_at, ''),
     partial: booleanFrom(record.partial),
+    warnings: arrayFrom<string>(record.warnings),
+  };
+}
+
+export function normalizeEdgeTileResponse(raw: unknown): EdgeTileResponse {
+  const record = isRecord(raw) ? raw : {};
+  const edgeMode = record.edge_mode === 'hidden' || record.edge_mode === 'focus' || record.edge_mode === 'all'
+    ? record.edge_mode
+    : 'all';
+  return {
+    graph: stringFrom(record.graph, ''),
+    edge_mode: edgeMode as EdgeMode,
+    tile: numberFrom(record.tile) ?? 0,
+    tile_size: numberFrom(record.tile_size) ?? 0,
+    returned_edges: numberFrom(record.returned_edges) ?? 0,
+    total_edges: numberFrom(record.total_edges) ?? 0,
+    has_more: Boolean(record.has_more),
+    focus_node_id: stringFrom(record.focus_node_id, '') || null,
+    nodes_in_scope: numberFrom(record.nodes_in_scope),
+    lod_layer: stringFrom(record.lod_layer, '') || null,
+    edges: arrayFrom<unknown>(record.edges).map(normalizeEdge).filter((edge) => edge.source && edge.target),
     warnings: arrayFrom<string>(record.warnings),
   };
 }

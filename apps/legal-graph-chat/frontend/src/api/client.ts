@@ -1,6 +1,7 @@
 import {
   normalizeAnswerResponse,
   normalizeCommunityPayload,
+  normalizeEdgeTileResponse,
   normalizeGraphPayload,
   normalizeHealth,
   normalizePrecedentHealth,
@@ -14,7 +15,9 @@ import type {
   AnswerResponse,
   CommunityPayloadDTO,
   EdgeMode,
+  EdgeTileResponse,
   ExplainResponse,
+  GraphBinaryWorkerStats,
   GraphCatalogResponse,
   GraphKey,
   GraphPayloadDTO,
@@ -32,6 +35,7 @@ import type {
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8765';
 const REQUEST_TIMEOUT_MS = 60_000;
+const FULL_GRAPH_WORKER_TIMEOUT_MS = 180_000;
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/$/, '');
 
@@ -108,7 +112,7 @@ async function requestJson<T>(path: string, init?: RequestInit, params?: Record<
   } else {
     externalSignal?.addEventListener('abort', abortFromExternal, { once: true });
   }
-  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
     const response = await fetch(buildUrl(path, params), {
@@ -139,7 +143,7 @@ async function requestJson<T>(path: string, init?: RequestInit, params?: Record<
     throw error;
   } finally {
     externalSignal?.removeEventListener('abort', abortFromExternal);
-    window.clearTimeout(timeout);
+    globalThis.clearTimeout(timeout);
   }
 }
 
@@ -223,6 +227,364 @@ export interface FullGraph3dParams extends Record<string, string | number | bool
 export async function getFullGraph3d(params: FullGraph3dParams, signal?: AbortSignal, graph?: GraphKey): Promise<GraphPayloadDTO> {
   const raw = await requestJson<unknown>('/graph/full-3d', { signal }, { ...params, ...graphParam(graph) });
   return normalizeGraphPayload(raw);
+}
+
+interface FullGraphWorkerResponse {
+  id: string;
+  ok: boolean;
+  payload?: GraphPayloadDTO;
+  message?: string;
+  status?: number;
+  detail?: unknown;
+}
+
+interface EdgeTileBinaryWorkerResponse {
+  id: string;
+  ok: boolean;
+  payload?: EdgeTileResponse;
+  message?: string;
+  status?: number;
+  detail?: unknown;
+}
+
+type GraphBinaryWorkerRequestType =
+  | 'INIT_GRAPH_NODES_BINARY'
+  | 'LOAD_EDGE_TILE_BINARY'
+  | 'CLEAR_GRAPH'
+  | 'GET_STATS'
+  | 'ABORT_REQUEST';
+
+interface GraphBinaryWorkerMessage {
+  id: string;
+  type: GraphBinaryWorkerRequestType | string;
+  ok?: boolean;
+  payload?: unknown;
+  message?: string;
+  status?: number;
+  detail?: unknown;
+  stats?: GraphBinaryWorkerStats;
+}
+
+interface PendingGraphBinaryWorkerRequest {
+  resolve: (message: GraphBinaryWorkerMessage) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof globalThis.setTimeout>;
+  abortFromExternal?: () => void;
+  signal?: AbortSignal;
+}
+
+function supportsFullGraphWorker(): boolean {
+  return typeof Worker !== 'undefined' && typeof URL !== 'undefined';
+}
+
+let graphBinaryWorker: Worker | null = null;
+const graphBinaryWorkerPending = new Map<string, PendingGraphBinaryWorkerRequest>();
+
+function requestId(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function rejectGraphBinaryWorkerPending(error: Error): void {
+  graphBinaryWorkerPending.forEach((pending, id) => {
+    globalThis.clearTimeout(pending.timeout);
+    pending.signal?.removeEventListener('abort', pending.abortFromExternal ?? (() => undefined));
+    pending.reject(error);
+    graphBinaryWorkerPending.delete(id);
+  });
+}
+
+function ensureGraphBinaryWorker(): Worker | null {
+  if (!supportsFullGraphWorker()) return null;
+  if (graphBinaryWorker) return graphBinaryWorker;
+
+  try {
+    graphBinaryWorker = new Worker(new URL('./graphBinaryWorker.ts', import.meta.url), { type: 'module' });
+  } catch {
+    graphBinaryWorker = null;
+    return null;
+  }
+
+  graphBinaryWorker.onmessage = (event: MessageEvent<GraphBinaryWorkerMessage>) => {
+    const message = event.data;
+    const pending = graphBinaryWorkerPending.get(message.id);
+    if (!pending) return;
+    graphBinaryWorkerPending.delete(message.id);
+    globalThis.clearTimeout(pending.timeout);
+    pending.signal?.removeEventListener('abort', pending.abortFromExternal ?? (() => undefined));
+    if (message.ok) {
+      pending.resolve(message);
+      return;
+    }
+    pending.reject(new ApiError(message.message || 'Graph binary worker request failed', message.status, message.detail));
+  };
+  graphBinaryWorker.onerror = (event) => {
+    const message = event.message || 'Graph binary worker failed';
+    graphBinaryWorker?.terminate();
+    graphBinaryWorker = null;
+    rejectGraphBinaryWorkerPending(new ApiError(message));
+  };
+  return graphBinaryWorker;
+}
+
+export function initGraphBinaryWorker(): boolean {
+  return Boolean(ensureGraphBinaryWorker());
+}
+
+export function disposeGraphBinaryWorker(): void {
+  graphBinaryWorker?.terminate();
+  graphBinaryWorker = null;
+  rejectGraphBinaryWorkerPending(new ApiError('Graph binary worker disposed'));
+}
+
+async function postGraphBinaryWorkerMessage<T>(
+  message: Omit<GraphBinaryWorkerMessage, 'id' | 'ok' | 'payload' | 'message' | 'status' | 'detail' | 'stats'> & {
+    apiBaseUrl?: string;
+    path?: string;
+    params?: Record<string, string | number | boolean | null | undefined>;
+  },
+  signal?: AbortSignal,
+): Promise<{ payload: T; stats?: GraphBinaryWorkerStats }> {
+  const worker = ensureGraphBinaryWorker();
+  if (!worker) throw new ApiError('Graph binary worker is unavailable');
+
+  return new Promise<{ payload: T; stats?: GraphBinaryWorkerStats }>((resolve, reject) => {
+    const id = requestId();
+    const abortFromExternal = () => {
+      worker.postMessage({ id: `abort-${id}`, type: 'ABORT_REQUEST', targetId: id });
+      const pending = graphBinaryWorkerPending.get(id);
+      if (pending) {
+        graphBinaryWorkerPending.delete(id);
+        globalThis.clearTimeout(pending.timeout);
+      }
+      reject(new ApiError('요청이 취소되었습니다.', 499));
+    };
+    const timeout = globalThis.setTimeout(() => {
+      graphBinaryWorkerPending.delete(id);
+      signal?.removeEventListener('abort', abortFromExternal);
+      worker.postMessage({ id: `abort-${id}`, type: 'ABORT_REQUEST', targetId: id });
+      reject(new ApiError('Graph binary worker 요청 시간이 초과되었습니다. JSON fallback 또는 더 작은 tile_size를 사용하세요.'));
+    }, FULL_GRAPH_WORKER_TIMEOUT_MS);
+
+    if (signal?.aborted) {
+      globalThis.clearTimeout(timeout);
+      reject(new ApiError('요청이 취소되었습니다.', 499));
+      return;
+    }
+    signal?.addEventListener('abort', abortFromExternal, { once: true });
+
+    graphBinaryWorkerPending.set(id, {
+      resolve: (response) => resolve({ payload: response.payload as T, stats: response.stats }),
+      reject,
+      timeout,
+      abortFromExternal,
+      signal,
+    });
+    worker.postMessage({ id, ...message });
+  });
+}
+
+export async function clearGraphBinaryWorker(signal?: AbortSignal): Promise<GraphBinaryWorkerStats> {
+  if (!supportsFullGraphWorker() || !graphBinaryWorker) {
+    return { initialized: false, node_count: 0, payload_bytes: 0, edge_tile_count: 0 };
+  }
+  const response = await postGraphBinaryWorkerMessage<GraphBinaryWorkerStats>({ type: 'CLEAR_GRAPH' }, signal);
+  return response.payload;
+}
+
+export async function getGraphBinaryWorkerStats(signal?: AbortSignal): Promise<GraphBinaryWorkerStats> {
+  if (!supportsFullGraphWorker() || !graphBinaryWorker) {
+    return { initialized: false, node_count: 0, payload_bytes: 0, edge_tile_count: 0 };
+  }
+  const response = await postGraphBinaryWorkerMessage<GraphBinaryWorkerStats>({ type: 'GET_STATS' }, signal);
+  return response.payload;
+}
+
+export async function getFullGraph3dWithWorker(params: FullGraph3dParams, signal?: AbortSignal, graph?: GraphKey): Promise<GraphPayloadDTO> {
+  if (!supportsFullGraphWorker()) return getFullGraph3d(params, signal, graph);
+
+  return new Promise<GraphPayloadDTO>((resolve, reject) => {
+    const worker = new Worker(new URL('./fullGraphWorker.ts', import.meta.url), { type: 'module' });
+    const requestId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    let settled = false;
+    const cleanup = () => {
+      worker.terminate();
+      signal?.removeEventListener('abort', abortFromExternal);
+      globalThis.clearTimeout(timeout);
+    };
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      fn();
+    };
+    const abortFromExternal = () => {
+      settle(() => reject(new ApiError('요청이 취소되었습니다.', 499)));
+    };
+    const timeout = globalThis.setTimeout(() => {
+      settle(() => reject(new ApiError('Full 3D worker 요청 시간이 초과되었습니다. edge tile 또는 hidden mode로 다시 시도하세요.')));
+    }, FULL_GRAPH_WORKER_TIMEOUT_MS);
+
+    if (signal?.aborted) {
+      abortFromExternal();
+      return;
+    }
+    signal?.addEventListener('abort', abortFromExternal, { once: true });
+    worker.onmessage = (event: MessageEvent<FullGraphWorkerResponse>) => {
+      const message = event.data;
+      if (message.id !== requestId) return;
+      if (message.ok && message.payload) {
+        settle(() => resolve(message.payload as GraphPayloadDTO));
+        return;
+      }
+      settle(() => reject(new ApiError(message.message || 'Full graph worker request failed', message.status, message.detail)));
+    };
+    worker.onerror = (event) => {
+      settle(() => reject(new ApiError(event.message || 'Full graph worker failed')));
+    };
+    worker.postMessage({
+      id: requestId,
+      apiBaseUrl: API_BASE_URL,
+      path: '/graph/full-3d',
+      params: { ...params, ...graphParam(graph) },
+    });
+  });
+}
+
+export async function getFullGraphNodesBinaryWithWorker(
+  params: FullGraph3dParams = {},
+  signal?: AbortSignal,
+  graph?: GraphKey,
+): Promise<GraphPayloadDTO> {
+  const jsonFallbackParams: FullGraph3dParams = { ...params, edge_mode: 'hidden' };
+  if (!supportsFullGraphWorker()) return getFullGraph3d(jsonFallbackParams, signal, graph);
+
+  try {
+    const response = await postGraphBinaryWorkerMessage<GraphPayloadDTO>(
+      {
+        type: 'INIT_GRAPH_NODES_BINARY',
+        apiBaseUrl: API_BASE_URL,
+        path: '/graph/full-3d/nodes/binary',
+        params: { ...jsonFallbackParams, ...graphParam(graph) },
+      },
+      signal,
+    );
+    return response.payload;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 499) throw error;
+    await clearGraphBinaryWorker().catch(() => undefined);
+    return getFullGraph3d(jsonFallbackParams, signal, graph);
+  }
+}
+
+export interface FullGraphEdgeTileParams extends Record<string, string | number | boolean | null | undefined> {
+  edge_mode?: EdgeMode;
+  focus_node_id?: string;
+  confirm_all_edges?: boolean;
+  tile?: number;
+  tile_size?: number;
+  node_limit?: number;
+  min_degree?: number;
+  community_id?: string;
+  lod_layer?: string;
+}
+
+export async function getFullGraphEdgeTile(params: FullGraphEdgeTileParams, signal?: AbortSignal, graph?: GraphKey): Promise<EdgeTileResponse> {
+  const raw = await requestJson<unknown>('/graph/full-3d/edge-tile', { signal }, { ...params, ...graphParam(graph) });
+  return normalizeEdgeTileResponse(raw);
+}
+
+export async function getFullGraphEdgeTileBinaryWithPersistentWorker(
+  params: FullGraphEdgeTileParams,
+  signal?: AbortSignal,
+  graph?: GraphKey,
+): Promise<EdgeTileResponse> {
+  if (!supportsFullGraphWorker()) return getFullGraphEdgeTile(params, signal, graph);
+
+  try {
+    const response = await postGraphBinaryWorkerMessage<EdgeTileResponse>(
+      {
+        type: 'LOAD_EDGE_TILE_BINARY',
+        apiBaseUrl: API_BASE_URL,
+        path: '/graph/full-3d/edge-tile/binary',
+        params: { ...params, ...graphParam(graph) },
+      },
+      signal,
+    );
+    return response.payload;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 499) throw error;
+    return getFullGraphEdgeTile(params, signal, graph);
+  }
+}
+
+export async function getFullGraphEdgeTileBinaryWithWorker(
+  params: FullGraphEdgeTileParams,
+  nodeIds: string[],
+  signal?: AbortSignal,
+  graph?: GraphKey,
+): Promise<EdgeTileResponse> {
+  if (!supportsFullGraphWorker()) return getFullGraphEdgeTile(params, signal, graph);
+
+  try {
+    return await new Promise<EdgeTileResponse>((resolve, reject) => {
+      const worker = new Worker(new URL('./edgeTileBinaryWorker.ts', import.meta.url), { type: 'module' });
+      const requestId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      let settled = false;
+      const cleanup = () => {
+        worker.terminate();
+        signal?.removeEventListener('abort', abortFromExternal);
+        globalThis.clearTimeout(timeout);
+      };
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        fn();
+      };
+      const abortFromExternal = () => {
+        settle(() => reject(new ApiError('요청이 취소되었습니다.', 499)));
+      };
+      const timeout = globalThis.setTimeout(() => {
+        settle(() => reject(new ApiError('Binary edge tile worker 요청 시간이 초과되었습니다. JSON tile fallback 또는 더 작은 tile_size를 사용하세요.')));
+      }, FULL_GRAPH_WORKER_TIMEOUT_MS);
+
+      if (signal?.aborted) {
+        abortFromExternal();
+        return;
+      }
+      signal?.addEventListener('abort', abortFromExternal, { once: true });
+      worker.onmessage = (event: MessageEvent<EdgeTileBinaryWorkerResponse>) => {
+        const message = event.data;
+        if (message.id !== requestId) return;
+        if (message.ok && message.payload) {
+          settle(() => resolve(message.payload as EdgeTileResponse));
+          return;
+        }
+        settle(() => reject(new ApiError(message.message || 'Binary edge tile worker request failed', message.status, message.detail)));
+      };
+      worker.onerror = (event) => {
+        settle(() => reject(new ApiError(event.message || 'Binary edge tile worker failed')));
+      };
+      worker.postMessage({
+        id: requestId,
+        apiBaseUrl: API_BASE_URL,
+        path: '/graph/full-3d/edge-tile/binary',
+        params: { ...params, ...graphParam(graph) },
+        nodeIds,
+      });
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 499) throw error;
+    return getFullGraphEdgeTile(params, signal, graph);
+  }
 }
 
 export async function getSource(path: string, signal?: AbortSignal, graph?: GraphKey): Promise<SourceResponse> {

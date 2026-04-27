@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import gzip
 import json
 import math
 import os
 import re
 import shutil
+import struct
 import subprocess
 from collections import Counter, deque
 from dataclasses import dataclass
@@ -32,6 +34,7 @@ from .models import (
     CommunityDTO,
     CommunityPayloadDTO,
     EdgeMode,
+    EdgeTileResponse,
     EvidenceItem,
     GraphEdgeDTO,
     GraphNodeDTO,
@@ -50,6 +53,8 @@ from .models import (
 
 TOKEN_RE = re.compile(r"[0-9A-Za-z가-힣ㆍ·]+")
 ANSWER_DISCLAIMER = "이 응답은 graph/source evidence 탐색 결과이며 법률 자문, 법적 판단 또는 행동 권고가 아닙니다. 반드시 원문과 전문가 검토로 확인하세요."
+EDGE_TILE_LAYER_CODES = {"context": 0, "backbone": 1, "density": 2, "focus": 3}
+EDGE_TILE_LAYER_NAMES = {value: key for key, value in EDGE_TILE_LAYER_CODES.items()}
 
 
 def env_enabled(name: str, default: bool) -> bool:
@@ -509,6 +514,7 @@ class GraphQueryService:
         self._raw_summary: dict[str, Any] = {}
         self._graph_mtime: float | None = None
         self._graph_hash: str | None = None
+        self._cache_root = self._resolve_cache_root()
 
     @property
     def graph(self) -> nx.Graph:
@@ -910,7 +916,12 @@ class GraphQueryService:
         if edge_limit is not None and edge_mode == "all" and edge_pairs:
             warnings.append("edge LOD active: backbone/context/focus metadata included for layered rendering")
 
-        positions = self._full_graph_layout_positions(selected_nodes, static_layout_mode) if static_layout else {}
+        layout_warnings: list[str] = []
+        if static_layout:
+            positions, layout_warnings = self._cached_full_graph_layout_positions(selected_nodes, static_layout_mode)
+            warnings.extend(layout_warnings)
+        else:
+            positions = {}
         if static_layout:
             warnings.append(
                 f"static_layout=true: deterministic backend x/y/z coordinates included using layout_mode={static_layout_mode}; "
@@ -931,6 +942,469 @@ class GraphQueryService:
             partial=partial,
             warnings=list(dict.fromkeys(warnings)),
         )
+
+    def full_graph_edge_tile(
+        self,
+        edge_mode: EdgeMode = "all",
+        focus_node_id: str | None = None,
+        confirm_all_edges: bool = False,
+        tile: int = 0,
+        tile_size: int = 25_000,
+        node_limit: int | None = None,
+        min_degree: int | None = None,
+        community_id: str | None = None,
+        lod_layer: str | None = None,
+    ) -> EdgeTileResponse:
+        graph = self.graph
+        focus = self._resolve_node(node_id=focus_node_id) if focus_node_id else None
+        safe_tile = max(0, tile)
+        safe_tile_size = max(1, min(tile_size, 100_000))
+        requested_layer = (lod_layer or "").strip().lower()
+        if requested_layer == "all":
+            requested_layer = ""
+        warnings = [
+            "edge tile API: load edges progressively; do not request every tile at once on large precedent graphs",
+        ]
+
+        selected_nodes = list(graph.nodes)
+        node_subset_requested = node_limit is not None or min_degree is not None or community_id is not None
+        if node_subset_requested:
+            selected_nodes, _node_reduced, node_warnings = self._bounded_full_graph_nodes(
+                focus=focus,
+                node_limit=node_limit,
+                min_degree=min_degree,
+                community_id=community_id,
+            )
+            warnings.extend(node_warnings)
+        selected_set = set(selected_nodes)
+
+        if edge_mode == "hidden":
+            return EdgeTileResponse(
+                graph=self.paths.graph_key,
+                edge_mode=edge_mode,
+                tile=safe_tile,
+                tile_size=safe_tile_size,
+                returned_edges=0,
+                total_edges=0,
+                has_more=False,
+                focus_node_id=focus,
+                nodes_in_scope=len(selected_nodes),
+                lod_layer=requested_layer or None,
+                edges=[],
+                warnings=[*warnings, "edge_mode=hidden returns no edge tiles"],
+            )
+
+        if edge_mode == "focus":
+            if not focus:
+                return EdgeTileResponse(
+                    graph=self.paths.graph_key,
+                    edge_mode=edge_mode,
+                    tile=safe_tile,
+                    tile_size=safe_tile_size,
+                    returned_edges=0,
+                    total_edges=0,
+                    has_more=False,
+                    focus_node_id=None,
+                    nodes_in_scope=len(selected_nodes),
+                    lod_layer=requested_layer or None,
+                    edges=[],
+                    warnings=[*warnings, "focus_node_id is required for focus edge tiles"],
+                )
+            edge_iter: Iterable[tuple[str, str]] = ((focus, n) for n in graph.neighbors(focus) if n in selected_set)
+        else:
+            if not confirm_all_edges:
+                return EdgeTileResponse(
+                    graph=self.paths.graph_key,
+                    edge_mode=edge_mode,
+                    tile=safe_tile,
+                    tile_size=safe_tile_size,
+                    returned_edges=0,
+                    total_edges=0,
+                    has_more=False,
+                    focus_node_id=focus,
+                    nodes_in_scope=len(selected_nodes),
+                    lod_layer=requested_layer or None,
+                    edges=[],
+                    warnings=[*warnings, "edge_mode=all tile requests require confirm_all_edges=true"],
+                )
+            edge_iter = ((u, v) for u, v in graph.edges(selected_set) if u in selected_set and v in selected_set)
+
+        start = safe_tile * safe_tile_size
+        collected: list[tuple[str, str, str]] = []
+        total_edges = 0
+        valid_layers = {"backbone", "context", "density", "focus"}
+        for u, v in edge_iter:
+            layer = self._edge_lod_layer(str(u), str(v), focus=focus, edge_limit=safe_tile_size)
+            if requested_layer and requested_layer in valid_layers and layer != requested_layer:
+                continue
+            if total_edges >= start and len(collected) < safe_tile_size:
+                collected.append((str(u), str(v), layer))
+            total_edges += 1
+
+        if requested_layer and requested_layer not in valid_layers:
+            warnings.append(f"unknown lod_layer ignored: {requested_layer}")
+        has_more = start + len(collected) < total_edges
+        edges = [
+            self._edge_dto(u, v, index, metadata_extra={"lod_layer": layer, "tile": safe_tile})
+            for index, (u, v, layer) in enumerate(collected, start=start)
+        ]
+        return EdgeTileResponse(
+            graph=self.paths.graph_key,
+            edge_mode=edge_mode,
+            tile=safe_tile,
+            tile_size=safe_tile_size,
+            returned_edges=len(edges),
+            total_edges=total_edges,
+            has_more=has_more,
+            focus_node_id=focus,
+            nodes_in_scope=len(selected_nodes),
+            lod_layer=requested_layer or None,
+            edges=edges,
+            warnings=list(dict.fromkeys(warnings)),
+        )
+
+    def full_graph_3d_binary(
+        self,
+        edge_mode: EdgeMode = "hidden",
+        focus_node_id: str | None = None,
+        confirm_all_edges: bool = False,
+        node_limit: int | None = None,
+        edge_limit: int | None = None,
+        min_degree: int | None = None,
+        community_id: str | None = None,
+        static_layout_mode: LayoutMode = "spherical",
+    ) -> tuple[bytes, dict[str, str]]:
+        payload = self.full_graph_3d(
+            edge_mode=edge_mode,
+            focus_node_id=focus_node_id,
+            confirm_all_edges=confirm_all_edges,
+            node_limit=node_limit,
+            edge_limit=edge_limit,
+            min_degree=min_degree,
+            community_id=community_id,
+            static_layout=True,
+            static_layout_mode=static_layout_mode,
+        )
+        node_index = {node.id: index for index, node in enumerate(payload.nodes)}
+        header_nodes = [
+            {
+                "id": node.id,
+                "label": node.label,
+                "community": node.community,
+                "degree": node.degree,
+                "type": node.type,
+                "source_file": node.source_file,
+                "source_url": node.source_url,
+            }
+            for node in payload.nodes
+        ]
+        edge_indices: list[tuple[int, int]] = []
+        for edge in payload.edges:
+            source_index = node_index.get(edge.source)
+            target_index = node_index.get(edge.target)
+            if source_index is None or target_index is None:
+                continue
+            edge_indices.append((source_index, target_index))
+
+        header = {
+            "format": "graphify.full3d.binary.v1",
+            "graph": self.paths.graph_key,
+            "edge_mode": payload.edge_mode,
+            "layout_mode": payload.layout_mode,
+            "node_count": len(payload.nodes),
+            "edge_count": len(edge_indices),
+            "arrays": {
+                "positions": {"type": "float32", "components": 3, "count": len(payload.nodes)},
+                "sizes": {"type": "float32", "components": 1, "count": len(payload.nodes)},
+                "edges": {"type": "uint32", "components": 2, "count": len(edge_indices)},
+            },
+            "warnings": payload.warnings,
+            "nodes": header_nodes,
+        }
+        header_bytes = json.dumps(header, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        body = bytearray()
+        body.extend(b"GF3D\x01")
+        body.extend(struct.pack("<I", len(header_bytes)))
+        body.extend(header_bytes)
+        for node in payload.nodes:
+            body.extend(
+                struct.pack(
+                    "<fff",
+                    float(node.x or 0.0),
+                    float(node.y or 0.0),
+                    float(node.z or 0.0),
+                )
+            )
+        for node in payload.nodes:
+            body.extend(struct.pack("<f", float(node.size or 1.0)))
+        for source_index, target_index in edge_indices:
+            body.extend(struct.pack("<II", source_index, target_index))
+        headers = {
+            "X-Graph-Binary-Format": "graphify.full3d.binary.v1",
+            "X-Graph-Binary-Node-Count": str(len(payload.nodes)),
+            "X-Graph-Binary-Edge-Count": str(len(edge_indices)),
+            "X-Graph-Binary-Layout": str(payload.layout_mode or ""),
+        }
+        return bytes(body), headers
+
+    def full_graph_3d_nodes_binary(
+        self,
+        node_limit: int | None = None,
+        min_degree: int | None = None,
+        community_id: str | None = None,
+        static_layout_mode: LayoutMode = "spherical",
+    ) -> tuple[bytes, dict[str, str]]:
+        """Backward-compatible alias for the compact GF3N node endpoint."""
+        return self.full_graph_nodes_binary(
+            node_limit=node_limit,
+            min_degree=min_degree,
+            community_id=community_id,
+            static_layout_mode=static_layout_mode,
+        )
+
+    def full_graph_nodes_binary(
+        self,
+        focus_node_id: str | None = None,
+        node_limit: int | None = None,
+        min_degree: int | None = None,
+        community_id: str | None = None,
+        static_layout_mode: LayoutMode = "spherical",
+    ) -> tuple[bytes, dict[str, str]]:
+        """Compact GF3N full-node binary payload for static 3D rendering.
+
+        GF3N keeps labels/source metadata out of the header/body. Consumers
+        should lazy-resolve rich node metadata through the existing explain/source
+        APIs after selection.
+        """
+        graph = self.graph
+        focus = self._resolve_node(node_id=focus_node_id) if focus_node_id else None
+        selected_nodes = list(graph.nodes)
+        node_subset_requested = node_limit is not None or min_degree is not None or community_id is not None
+        if node_subset_requested:
+            selected_nodes, _node_reduced, _node_warnings = self._bounded_full_graph_nodes(
+                focus=focus,
+                node_limit=node_limit,
+                min_degree=min_degree,
+                community_id=community_id,
+            )
+
+        positions = self._cached_full_graph_layout_positions(selected_nodes, static_layout_mode)[0]
+        hub_threshold = self._stop_hub_threshold()
+
+        position_bytes = bytearray()
+        size_bytes = bytearray()
+        degree_bytes = bytearray()
+        community_bytes = bytearray()
+        flag_bytes = bytearray()
+        id_table_bytes = bytearray()
+
+        for nid in selected_nodes:
+            x, y, z = positions.get(str(nid), (0.0, 0.0, 0.0))
+            position_bytes.extend(struct.pack("<fff", float(x), float(y), float(z)))
+
+        for nid in selected_nodes:
+            degree = int(graph.degree(nid))
+            data = graph.nodes[nid]
+            community = self._community(dict(data))
+            flags = 0
+            if degree >= hub_threshold:
+                flags |= 0b0000_0001
+            if data.get("source_file") or data.get("source_url"):
+                flags |= 0b0000_0010
+
+            size_bytes.extend(struct.pack("<f", math.sqrt(max(float(degree), 1.0))))
+            degree_bytes.extend(struct.pack("<I", max(0, min(degree, 0xFFFFFFFF))))
+            community_bytes.extend(struct.pack("<i", community if community is not None else -1))
+            flag_bytes.extend(struct.pack("<B", flags))
+
+            id_bytes = str(nid).encode("utf-8", errors="replace")
+            id_table_bytes.extend(struct.pack("<I", len(id_bytes)))
+            id_table_bytes.extend(id_bytes)
+
+        array_byte_lengths = {
+            "positions": len(position_bytes),
+            "sizes": len(size_bytes),
+            "degrees": len(degree_bytes),
+            "communities": len(community_bytes),
+            "flags": len(flag_bytes),
+            "ids": len(id_table_bytes),
+        }
+        header = {
+            "graph_id": self.paths.graph_key,
+            "layout_mode": static_layout_mode,
+            "node_count": len(selected_nodes),
+            "array_byte_lengths": array_byte_lengths,
+            "schema": {
+                "byte_order": "little-endian",
+                "body_order": ["positions", "sizes", "degrees", "communities", "flags", "ids"],
+                "positions": {"type": "float32", "components": 3},
+                "sizes": {"type": "float32", "components": 1},
+                "degrees": {"type": "uint32", "components": 1},
+                "communities": {"type": "int32", "components": 1, "unknown": -1},
+                "flags": {"type": "uint8", "components": 1, "bits": {"is_hub": 1, "has_source": 2}},
+                "ids": {"encoding": "utf-8", "format": "uint32_length_prefixed"},
+            },
+        }
+        header_bytes = json.dumps(header, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        body = bytearray()
+        body.extend(b"GF3N\x01")
+        body.extend(struct.pack("<I", len(header_bytes)))
+        body.extend(header_bytes)
+        body.extend(position_bytes)
+        body.extend(size_bytes)
+        body.extend(degree_bytes)
+        body.extend(community_bytes)
+        body.extend(flag_bytes)
+        body.extend(id_table_bytes)
+        node_order_hash = hashlib.sha256("\0".join(str(nid) for nid in selected_nodes).encode("utf-8", errors="replace")).hexdigest()[:20]
+        headers = {
+            "X-Graph-Binary-Format": "graphify.full3d.nodes.binary.v1",
+            "X-Graph-Binary-Node-Count": str(len(selected_nodes)),
+            "X-Graph-Binary-Layout": static_layout_mode,
+            "X-Graph-Binary-Header-Bytes": str(len(header_bytes)),
+            "X-Graph-Binary-Id-Bytes": str(len(id_table_bytes)),
+            "X-Graph-Binary-Node-Order-Hash": node_order_hash,
+        }
+        return bytes(body), headers
+
+    def full_graph_edge_tile_binary(
+        self,
+        edge_mode: EdgeMode = "all",
+        focus_node_id: str | None = None,
+        confirm_all_edges: bool = False,
+        tile: int = 0,
+        tile_size: int = 25_000,
+        node_limit: int | None = None,
+        min_degree: int | None = None,
+        community_id: str | None = None,
+        lod_layer: str | None = None,
+    ) -> tuple[bytes, dict[str, str]]:
+        graph = self.graph
+        focus = self._resolve_node(node_id=focus_node_id) if focus_node_id else None
+        safe_tile = max(0, tile)
+        safe_tile_size = max(1, min(tile_size, 100_000))
+        requested_layer = (lod_layer or "").strip().lower()
+        if requested_layer == "all":
+            requested_layer = ""
+        valid_layers = set(EDGE_TILE_LAYER_CODES)
+        warnings = [
+            "binary edge tile API: worker-decode friendly; load tiles progressively",
+        ]
+
+        selected_nodes = list(graph.nodes)
+        node_subset_requested = node_limit is not None or min_degree is not None or community_id is not None
+        if node_subset_requested:
+            selected_nodes, _node_reduced, node_warnings = self._bounded_full_graph_nodes(
+                focus=focus,
+                node_limit=node_limit,
+                min_degree=min_degree,
+                community_id=community_id,
+            )
+            warnings.extend(node_warnings)
+        selected_set = set(selected_nodes)
+        node_index = {str(nid): index for index, nid in enumerate(selected_nodes)}
+
+        if requested_layer and requested_layer not in valid_layers:
+            warnings.append(f"unknown lod_layer ignored: {requested_layer}")
+            requested_layer = ""
+
+        edge_iter: Iterable[tuple[str, str]]
+        total_edges_fast: int | None = None
+        if edge_mode == "hidden":
+            edge_iter = []
+            total_edges_fast = 0
+            warnings.append("edge_mode=hidden returns no edge tiles")
+        elif edge_mode == "focus":
+            if focus:
+                edge_iter = ((str(focus), str(n)) for n in graph.neighbors(focus) if n in selected_set)
+                if not requested_layer:
+                    total_edges_fast = sum(1 for n in graph.neighbors(focus) if n in selected_set)
+            else:
+                edge_iter = []
+                total_edges_fast = 0
+                warnings.append("focus_node_id is required for focus edge tiles")
+        else:
+            if not confirm_all_edges:
+                edge_iter = []
+                total_edges_fast = 0
+                warnings.append("edge_mode=all binary tile requests require confirm_all_edges=true")
+            else:
+                edge_iter = ((str(u), str(v)) for u, v in graph.edges(selected_set) if u in selected_set and v in selected_set)
+                if not node_subset_requested and not requested_layer:
+                    total_edges_fast = graph.number_of_edges()
+
+        start = safe_tile * safe_tile_size
+        end = start + safe_tile_size
+        edge_indices: list[tuple[int, int]] = []
+        layer_codes: list[int] = []
+        total_edges = 0
+
+        if total_edges_fast is not None and not requested_layer:
+            total_edges = total_edges_fast
+            for index, (u, v) in enumerate(edge_iter):
+                if index >= end:
+                    break
+                if index < start:
+                    continue
+                source_index = node_index.get(str(u))
+                target_index = node_index.get(str(v))
+                if source_index is None or target_index is None:
+                    continue
+                layer = self._edge_lod_layer(str(u), str(v), focus=focus, edge_limit=safe_tile_size)
+                edge_indices.append((source_index, target_index))
+                layer_codes.append(EDGE_TILE_LAYER_CODES.get(layer, EDGE_TILE_LAYER_CODES["context"]))
+        else:
+            for u, v in edge_iter:
+                layer = self._edge_lod_layer(str(u), str(v), focus=focus, edge_limit=safe_tile_size)
+                if requested_layer and layer != requested_layer:
+                    continue
+                if total_edges >= start and len(edge_indices) < safe_tile_size:
+                    source_index = node_index.get(str(u))
+                    target_index = node_index.get(str(v))
+                    if source_index is not None and target_index is not None:
+                        edge_indices.append((source_index, target_index))
+                        layer_codes.append(EDGE_TILE_LAYER_CODES.get(layer, EDGE_TILE_LAYER_CODES["context"]))
+                total_edges += 1
+
+        returned_edges = len(edge_indices)
+        has_more = start + returned_edges < total_edges
+        node_order_hash = hashlib.sha256("\0".join(str(nid) for nid in selected_nodes).encode("utf-8", errors="replace")).hexdigest()[:20]
+        header = {
+            "format": "graphify.edge-tile.binary.v1",
+            "graph": self.paths.graph_key,
+            "edge_mode": edge_mode,
+            "tile": safe_tile,
+            "tile_size": safe_tile_size,
+            "returned_edges": returned_edges,
+            "total_edges": total_edges,
+            "has_more": has_more,
+            "focus_node_id": focus,
+            "nodes_in_scope": len(selected_nodes),
+            "node_order": "full-graph-node-order-v1",
+            "node_order_hash": node_order_hash,
+            "lod_layer": requested_layer or None,
+            "layer_codes": EDGE_TILE_LAYER_NAMES,
+            "arrays": {
+                "edges": {"type": "uint32", "components": 2, "count": returned_edges},
+                "layers": {"type": "uint8", "components": 1, "count": returned_edges},
+            },
+            "warnings": list(dict.fromkeys(warnings)),
+        }
+        header_bytes = json.dumps(header, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        body = bytearray()
+        body.extend(b"GF3E\x01")
+        body.extend(struct.pack("<I", len(header_bytes)))
+        body.extend(header_bytes)
+        for source_index, target_index in edge_indices:
+            body.extend(struct.pack("<II", source_index, target_index))
+        body.extend(bytes(layer_codes))
+        headers = {
+            "X-Graph-Binary-Format": "graphify.edge-tile.binary.v1",
+            "X-Graph-Binary-Edge-Count": str(returned_edges),
+            "X-Graph-Binary-Total-Edges": str(total_edges),
+            "X-Graph-Binary-Node-Order-Hash": node_order_hash,
+        }
+        return bytes(body), headers
 
     def _bounded_full_graph_nodes(
         self,
@@ -1092,6 +1566,67 @@ class GraphQueryService:
             requested = requested.removeprefix("community-")
         value = self.graph.nodes[nid].get("community")
         return str(value) == requested
+
+    def _resolve_cache_root(self) -> Path:
+        raw = os.environ.get("LEGAL_GRAPH_CACHE_DIR", "").strip()
+        if raw:
+            cache_root = Path(raw).expanduser()
+            if not cache_root.is_absolute():
+                cache_root = (self.paths.repo_root / cache_root).resolve()
+            return cache_root
+        return self.paths.repo_root / ".graphify" / "legal-graph-chat-cache"
+
+    def _layout_cache_path(self, nodes: list[str], layout_mode: LayoutMode) -> Path:
+        graph_token = self._graph_hash or self.cache_token()
+        nodes_hash = hashlib.sha256()
+        for nid in nodes:
+            nodes_hash.update(str(nid).encode("utf-8", errors="replace"))
+            nodes_hash.update(b"\0")
+        digest = nodes_hash.hexdigest()[:20]
+        safe_graph_token = re.sub(r"[^0-9A-Za-z_.-]+", "-", str(graph_token))[:40]
+        return (
+            self._cache_root
+            / "layouts"
+            / f"{self.paths.graph_key}-{safe_graph_token}-{layout_mode}-{len(nodes)}-{digest}.json.gz"
+        )
+
+    def _cached_full_graph_layout_positions(self, nodes: list[str], layout_mode: LayoutMode) -> tuple[dict[str, tuple[float, float, float]], list[str]]:
+        cache_path = self._layout_cache_path(nodes, layout_mode)
+        warnings: list[str] = []
+        if cache_path.exists():
+            try:
+                with gzip.open(cache_path, "rt", encoding="utf-8") as fh:
+                    cached = json.load(fh)
+                cached_nodes = cached.get("nodes")
+                cached_positions = cached.get("positions")
+                if cached_nodes == nodes and isinstance(cached_positions, list) and len(cached_positions) == len(nodes):
+                    positions = {
+                        nid: (float(position[0]), float(position[1]), float(position[2]))
+                        for nid, position in zip(nodes, cached_positions)
+                        if isinstance(position, (list, tuple)) and len(position) == 3
+                    }
+                    if len(positions) == len(nodes):
+                        return positions, [f"static layout disk cache hit: {cache_path.name}"]
+                warnings.append("static layout disk cache ignored: cache metadata mismatch")
+            except Exception as exc:  # noqa: BLE001 - cache is best-effort only
+                warnings.append(f"static layout disk cache read failed: {exc}")
+
+        positions = self._full_graph_layout_positions(nodes, layout_mode)
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "graph": self.paths.graph_key,
+                "graph_hash": self._graph_hash,
+                "layout_mode": layout_mode,
+                "nodes": nodes,
+                "positions": [list(positions[nid]) for nid in nodes],
+            }
+            with gzip.open(cache_path, "wt", encoding="utf-8") as fh:
+                json.dump(payload, fh, ensure_ascii=False, separators=(",", ":"))
+            warnings.append(f"static layout disk cache miss: wrote {cache_path.name}")
+        except Exception as exc:  # noqa: BLE001 - layout should still succeed without disk cache
+            warnings.append(f"static layout disk cache write failed: {exc}")
+        return positions, warnings
 
     def _full_graph_layout_positions(self, nodes: list[str], layout_mode: LayoutMode) -> dict[str, tuple[float, float, float]]:
         if layout_mode == "clustered":

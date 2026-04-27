@@ -59,6 +59,21 @@ class GraphPayloadDTO(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class EdgeTileResponse(BaseModel):
+    graph: str
+    edge_mode: EdgeMode = "all"
+    tile: int
+    tile_size: int
+    returned_edges: int
+    total_edges: int
+    has_more: bool
+    focus_node_id: str | None = None
+    nodes_in_scope: int | None = None
+    lod_layer: str | None = None
+    edges: list[GraphEdgeDTO] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class EvidenceItem(BaseModel):
     id: str
     label: str

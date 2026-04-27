@@ -32,6 +32,19 @@ npm run typecheck  # TypeScript only
   The legacy clustered and flat circular static layouts remain backend modes for comparison.
 - For `precedent-kr`, Full 3D remains bounded/sampled in the GUI because the
   graph is much larger than the 법령 graph.
+- Large Full 3D JSON requests use a WebWorker fetch/parse path when available.
+- `precedent-kr` can first render all `124k` nodes with hidden edges, then add
+  binary edge tiles progressively. Full-node loading uses the compact `GF3N`
+  binary endpoint when available.
+- A persistent `graphBinaryWorker` keeps node order/index state in the worker,
+  so GF3E tile requests no longer resend the 124k node id list from the main thread.
+- GF3E edge tile results are rendered through typed-array edge buffers in
+  `StaticBufferGraph`; JSON edge tiles and DTO rendering remain fallback paths.
+- Full 3D edge expansion uses browser safety controls: default visible edge cap
+  `100k`, high cap `250k`, experimental full cap behind confirmation,
+  in-flight tile request cap `1`, and optional one-tile prefetch.
+- Static Full 3D uses optimized edge `BufferGeometry` layers and GPU color
+  picking with CPU fallback for large node clouds.
 - Graph search supports Enter or `Focus result` to select the first matching
   node and move the 3D camera focus.
 - Community nodes show member/edge counts, top God Nodes, wiki article access,
@@ -55,5 +68,9 @@ Default API base: `http://127.0.0.1:8765`.
 - `POST /subgraph/3d`
 - `GET /communities/3d`
 - `GET /graph/full-3d`
+- `GET /graph/full-3d/edge-tile`
+- `GET /graph/full-3d/edge-tile/binary`
+- `GET /graph/full-3d/nodes/binary`
+- `GET /graph/full-3d/binary`
 - `GET /suggested-questions`
 - `GET /source`

@@ -15,7 +15,7 @@ import {
 import { shouldShowGraphSelection, type GraphRenderMode } from '../utils/graphViewState';
 import { EvidenceCard } from './EvidenceCard';
 import { GraphFallback } from './GraphFallback';
-import { StaticBufferGraph } from './StaticBufferGraph';
+import { StaticBufferGraph, type StaticEdgeBuffer } from './StaticBufferGraph';
 
 type WebGLNode = NodeObject<GraphNodeDTO> & {
   id: string;
@@ -127,6 +127,7 @@ interface WebGLGraphProps {
   performanceProfile?: PerformanceProfile;
   edgeStrength?: number;
   onEdgeStrengthChange?: (value: number) => void;
+  edgeBuffer?: StaticEdgeBuffer | null;
 }
 
 function isWebGLAvailable(): boolean {
@@ -197,6 +198,7 @@ export function WebGLGraph({
   performanceProfile = 'auto',
   edgeStrength = 1,
   onEdgeStrengthChange,
+  edgeBuffer = null,
 }: WebGLGraphProps) {
   const graphRef = useRef<ForceGraphMethods<WebGLNode, WebGLLink> | undefined>(undefined);
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
@@ -254,10 +256,12 @@ export function WebGLGraph({
   }, [graphData, performanceProfile, staticLayoutCandidate]);
   const rendererSettings = isLargeGraph ? LARGE_RENDERER_SETTINGS : NORMAL_RENDERER_SETTINGS;
   const shouldUseStaticRenderer = Boolean(staticLayoutCandidate || (renderMode === '3d' && filteredPayload && hasStaticLayout && graphData && graphData.links.length > LARGE_GRAPH_LINK_THRESHOLD));
+  const activeEdgeBuffer = query.trim() ? null : edgeBuffer;
+  const activeEdgeBufferCount = activeEdgeBuffer?.edgeCount ?? activeEdgeBuffer?.edgeSourceIndices.length ?? 0;
   const visibleLinkCount = useMemo(() => {
     if (!filteredPayload) return 0;
-    return shouldUseStaticRenderer ? visibleEdgesForMode(filteredPayload, edgeMode).length : graphData?.links.length ?? 0;
-  }, [edgeMode, filteredPayload, graphData, shouldUseStaticRenderer]);
+    return shouldUseStaticRenderer ? activeEdgeBufferCount || visibleEdgesForMode(filteredPayload, edgeMode).length : graphData?.links.length ?? 0;
+  }, [activeEdgeBufferCount, edgeMode, filteredPayload, graphData, shouldUseStaticRenderer]);
   const graphRefreshKey = graphData ? `${title}:${edgeMode}:${graphData.nodes.length}:${graphData.links.length}:${performanceProfile}` : '';
 
   useEffect(() => {
@@ -594,7 +598,7 @@ export function WebGLGraph({
 
       {renderMode === '3d' && shouldUseStaticRenderer && filteredPayload ? (
         <div ref={canvasContainerRef} className="lg-webgl-canvas lg-webgl-canvas--static" role="img" aria-label={`${title}: static renderer for ${filteredPayload.nodes.length} nodes, ${filteredPayload.edges.length} edges`}>
-          <StaticBufferGraph title={title} payload={filteredPayload} edgeMode={edgeMode} selectedNodeId={selectedNodeId} onSelectNode={onSelectNode} edgeStrength={edgeStrength} />
+          <StaticBufferGraph title={title} payload={filteredPayload} edgeMode={edgeMode} edgeBuffer={activeEdgeBuffer} selectedNodeId={selectedNodeId} onSelectNode={onSelectNode} edgeStrength={edgeStrength} />
         </div>
       ) : null}
 

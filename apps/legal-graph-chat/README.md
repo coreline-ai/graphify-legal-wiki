@@ -117,6 +117,16 @@ Current graph API:
 - `GET /communities/3d`
 - `GET /graph/full-3d?edge_mode=hidden|focus|all`
   - `edge_mode=all` requires `confirm_all_edges=true`; otherwise backend returns the node payload with hidden edges and a warning.
+  - `static_layout=true` can use disk-cached deterministic coordinates for repeated large graph views.
+- `GET /graph/full-3d/edge-tile?edge_mode=all&confirm_all_edges=true&tile=0&tile_size=25000`
+  - Returns edge-only LOD tiles for progressive Full 3D expansion without one giant JSON payload.
+- `GET /graph/full-3d/edge-tile/binary`
+  - Returns the same progressive edge tile as a compact `graphify.edge-tile.binary.v1` stream for WebWorker decoding.
+- `GET /graph/full-3d/nodes/binary`
+  - Compact `GF3N\x01` node-only binary stream for Full 3D static rendering.
+  - Carries typed positions/sizes/degrees/communities/flags plus a length-prefixed node id table; labels/source metadata are lazy-resolved via existing node/source APIs.
+- `GET /graph/full-3d/binary`
+  - Legacy experimental binary foundation for typed-array friendly node positions, node sizes, and edge indices.
 - `GET /suggested-questions`
 - `GET /source?path=...`
 
@@ -141,6 +151,7 @@ Answer and precedent follow-up API contract:
 
 - Source/evidence-first. No answer should appear as unsupported legal advice.
 - The left sidebar graph selector controls whether the workspace explores the `legalize-kr` 법령 graph or the `precedent-kr` 판례 graph.
+- `precedent-kr` Full 3D loads full nodes through GF3N + persistent WebWorker state, then adds GF3E edge tiles as typed index buffers under memory cap/backpressure controls.
 - Full 3D Graph is opt-in, lazy-loaded, and starts with `edge_mode=hidden`.
 - `precedent-kr` Full 3D uses bounded sampled/static payloads by default; raw all-edge direct loading is intentionally not exposed in the GUI because the graph is much larger than the 법령 graph.
 - Full 3D static coordinates support `static_layout_mode=clustered|circular|spherical`; the frontend requests `spherical` by default so the safe/raw overview reads as a round 3D node-link graph instead of a clustered slab.
@@ -148,6 +159,9 @@ Answer and precedent follow-up API contract:
 - 3D graph panels use lazy WebGL rendering: bounded subgraphs can use `react-force-graph-3d`, while large Full 3D payloads use a static `BufferGeometry` renderer with DOM/SVG fallback and `3D / 2D / evidence` view switching.
 - 3D search can focus the first matching node, and Community Overview selection opens member/edge counts, top God Nodes, wiki article access, and limited community 3D exploration.
 - Browser must never fetch raw `graph.json` directly.
+- Full 3D payload loading uses a WebWorker path when available so large JSON fetch/parse work does not block the main UI thread.
+- `precedent-kr` edge expansion uses progressive binary edge tiles decoded in a WebWorker, with JSON tile fallback; do not auto-load all `761k+` edges in a single browser request.
+- Static Full 3D uses position-only edge `BufferGeometry` layers and GPU color picking with CPU fallback for large node clouds.
 - API responses include local request latency, cache headers/ETags, and gzip compression for large JSON responses.
 - `docs/design/obsidian-inspired-tokens.css` is the design token source of truth.
 - Obsidian is only an interaction/design reference; do not use Obsidian logo, icon, or trademark assets.

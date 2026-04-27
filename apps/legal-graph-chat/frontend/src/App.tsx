@@ -16,7 +16,9 @@ import {
   ApiError,
   getCommunities3d,
   getExplain,
-  getFullGraph3d,
+  getFullGraph3dWithWorker,
+  getFullGraphEdgeTileBinaryWithPersistentWorker,
+  getFullGraphNodesBinaryWithWorker,
   getGraphs,
   getHealth,
   getPrecedentSource,
@@ -34,8 +36,10 @@ import type {
   Citation,
   CommunityPayloadDTO,
   EdgeMode,
+  EdgeTileResponse,
   EvidenceItem,
   GraphCatalogItem,
+  GraphEdgeDTO,
   GraphKey,
   GraphNodeDTO,
   GraphPayloadDTO,
@@ -51,6 +55,7 @@ import type {
 } from "./api/types";
 import { EvidenceCard } from "./components/EvidenceCard";
 import { HealthCard } from "./components/HealthCard";
+import { StaticBufferGraph, type StaticEdgeBuffer } from "./components/StaticBufferGraph";
 import { WarningModal } from "./components/WarningModal";
 import {
   clampInspectorWidth,
@@ -61,6 +66,7 @@ import {
   serializePaneLayoutPreference,
 } from "./utils/paneLayout";
 import { activeEvidenceFor } from "./utils/evidenceState";
+import { edgeLodLayer } from "./utils/graphLayout";
 
 const WebGLGraph = lazy(() =>
   import("./components/WebGLGraph").then((module) => ({
@@ -114,6 +120,11 @@ const PRECEDENT_DEFAULT_QUERY = "손해배상 계약 해제";
 const FULL_3D_STATIC_LAYOUT_MODE: StaticLayoutMode = "spherical";
 const FULL_3D_STATIC_LAYOUT_COPY = "spherical 3D layout";
 const FULL_3D_SAFE_EDGE_MODE: EdgeMode = "all";
+const FULL_3D_EDGE_TILE_SIZE = 25_000;
+const FULL_3D_DEFAULT_VISIBLE_EDGE_CAP = 100_000;
+const FULL_3D_HIGH_VISIBLE_EDGE_CAP = 250_000;
+const FULL_3D_EXPERIMENTAL_EDGE_CAP_FALLBACK = 761_900;
+const FULL_3D_TILE_IN_FLIGHT_LIMIT = 1;
 
 const LEGAL_REVIEW_CHECKS = [
   {
@@ -145,6 +156,36 @@ interface LegalFeedbackState {
   submitted: boolean;
 }
 
+type FullGraphEdgeCapMode = "default" | "high" | "experimental";
+type FullGraphPrefetchStatus = "off" | "idle" | "loading" | "ready" | "paused" | "error";
+
+interface FullGraphEdgeTileState {
+  nextTile: number;
+  tileSize: number;
+  loadedEdges: number;
+  totalEdges: number | null;
+  hasMore: boolean;
+  status: string;
+  visibleEdgeCap: number;
+  capMode: FullGraphEdgeCapMode;
+  experimentalFullEdgesEnabled: boolean;
+  inFlightTileRequests: number;
+  prefetchEnabled: boolean;
+  prefetchStatus: FullGraphPrefetchStatus;
+  prefetchPausedReason: string;
+  prefetchedTile: number | null;
+  prefetchedEdges: number;
+}
+
+interface PreparedFullGraphEdgeTile extends StaticEdgeBuffer {
+  tile: number;
+  tileSize: number;
+  returnedEdges: number;
+  totalEdges: number;
+  hasMore: boolean;
+  warnings: string[];
+}
+
 interface StatusChip {
   label: string;
   title?: string;
@@ -173,6 +214,167 @@ function displayValue(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function initialFullGraphEdgeTileState(): FullGraphEdgeTileState {
+  return {
+    nextTile: 0,
+    tileSize: FULL_3D_EDGE_TILE_SIZE,
+    loadedEdges: 0,
+    totalEdges: null,
+    hasMore: true,
+    status: "",
+    visibleEdgeCap: FULL_3D_DEFAULT_VISIBLE_EDGE_CAP,
+    capMode: "default",
+    experimentalFullEdgesEnabled: false,
+    inFlightTileRequests: 0,
+    prefetchEnabled: false,
+    prefetchStatus: "off",
+    prefetchPausedReason: "",
+    prefetchedTile: null,
+    prefetchedEdges: 0,
+  };
+}
+
+function staticEdgeBufferCount(edgeBuffer: StaticEdgeBuffer | null | undefined): number {
+  if (!edgeBuffer) return 0;
+  const requested = edgeBuffer.edgeCount ?? edgeBuffer.edgeSourceIndices.length;
+  return Math.max(0, Math.min(requested, edgeBuffer.edgeSourceIndices.length, edgeBuffer.edgeTargetIndices.length));
+}
+
+function edgeLayerCodeForStaticBuffer(edge: GraphEdgeDTO): number {
+  const layer = edgeLodLayer(edge);
+  if (layer === "backbone") return 1;
+  if (layer === "density") return 2;
+  if (layer === "focus") return 3;
+  return 0;
+}
+
+function prepareFullGraphEdgeTile(
+  tile: EdgeTileResponse,
+  nodeIndexById: Map<string, number>,
+  maxEdges: number,
+): PreparedFullGraphEdgeTile {
+  if (tile.edgeSourceIndices && tile.edgeTargetIndices) {
+    const requestedCount = Math.max(
+      0,
+      Math.min(
+        tile.returned_edges,
+        maxEdges,
+        tile.edgeSourceIndices.length,
+        tile.edgeTargetIndices.length,
+      ),
+    );
+    const layers = tile.edgeLayers ?? new Uint8Array(requestedCount);
+    return {
+      edgeSourceIndices:
+        requestedCount === tile.edgeSourceIndices.length
+          ? tile.edgeSourceIndices
+          : tile.edgeSourceIndices.slice(0, requestedCount),
+      edgeTargetIndices:
+        requestedCount === tile.edgeTargetIndices.length
+          ? tile.edgeTargetIndices
+          : tile.edgeTargetIndices.slice(0, requestedCount),
+      edgeLayers:
+        requestedCount === layers.length ? layers : layers.slice(0, requestedCount),
+      edgeCount: requestedCount,
+      sourceLabel: tile.binary ? "persistent worker typed edge tiles" : "typed edge tiles",
+      tile: tile.tile,
+      tileSize: tile.tile_size,
+      returnedEdges: tile.returned_edges,
+      totalEdges: tile.total_edges,
+      hasMore: tile.has_more,
+      warnings: tile.warnings ?? [],
+    };
+  }
+  const requestedCount = Math.max(0, Math.min(tile.edges.length, maxEdges));
+  const edgeSourceIndices = new Uint32Array(requestedCount);
+  const edgeTargetIndices = new Uint32Array(requestedCount);
+  const edgeLayers = new Uint8Array(requestedCount);
+  let count = 0;
+
+  for (const edge of tile.edges) {
+    if (count >= requestedCount) break;
+    const sourceIndex = nodeIndexById.get(edge.source);
+    const targetIndex = nodeIndexById.get(edge.target);
+    if (sourceIndex === undefined || targetIndex === undefined) continue;
+    edgeSourceIndices[count] = sourceIndex;
+    edgeTargetIndices[count] = targetIndex;
+    edgeLayers[count] = edgeLayerCodeForStaticBuffer(edge);
+    count += 1;
+  }
+
+  return {
+    edgeSourceIndices: count === edgeSourceIndices.length ? edgeSourceIndices : edgeSourceIndices.slice(0, count),
+    edgeTargetIndices: count === edgeTargetIndices.length ? edgeTargetIndices : edgeTargetIndices.slice(0, count),
+    edgeLayers: count === edgeLayers.length ? edgeLayers : edgeLayers.slice(0, count),
+    edgeCount: count,
+    sourceLabel: "typed edge tiles",
+    tile: tile.tile,
+    tileSize: tile.tile_size,
+    returnedEdges: tile.returned_edges,
+    totalEdges: tile.total_edges,
+    hasMore: tile.has_more,
+    warnings: tile.warnings ?? [],
+  };
+}
+
+function mergeStaticEdgeBuffers(
+  current: StaticEdgeBuffer | null,
+  next: StaticEdgeBuffer,
+  cap: number,
+): StaticEdgeBuffer {
+  const currentCount = staticEdgeBufferCount(current);
+  const nextCount = staticEdgeBufferCount(next);
+  const allowedNextCount = Math.max(0, Math.min(nextCount, cap - currentCount));
+  const mergedCount = currentCount + allowedNextCount;
+  const edgeSourceIndices = new Uint32Array(mergedCount);
+  const edgeTargetIndices = new Uint32Array(mergedCount);
+  const edgeLayers = new Uint8Array(mergedCount);
+
+  if (current && currentCount > 0) {
+    edgeSourceIndices.set(current.edgeSourceIndices.subarray(0, currentCount), 0);
+    edgeTargetIndices.set(current.edgeTargetIndices.subarray(0, currentCount), 0);
+    const currentLayers = current.edgeLayers ?? current.layer;
+    if (currentLayers) edgeLayers.set(currentLayers.subarray(0, currentCount), 0);
+  }
+  if (allowedNextCount > 0) {
+    edgeSourceIndices.set(next.edgeSourceIndices.subarray(0, allowedNextCount), currentCount);
+    edgeTargetIndices.set(next.edgeTargetIndices.subarray(0, allowedNextCount), currentCount);
+    const nextLayers = next.edgeLayers ?? next.layer;
+    if (nextLayers) edgeLayers.set(nextLayers.subarray(0, allowedNextCount), currentCount);
+  }
+
+  return {
+    edgeSourceIndices,
+    edgeTargetIndices,
+    edgeLayers,
+    edgeCount: mergedCount,
+    totalEdges: next.totalEdges ?? current?.totalEdges ?? null,
+    sourceLabel: "typed edge tiles",
+  };
+}
+
+function truncateStaticEdgeBuffer(buffer: StaticEdgeBuffer | null, cap: number): StaticEdgeBuffer | null {
+  if (!buffer) return null;
+  const count = Math.min(staticEdgeBufferCount(buffer), Math.max(0, cap));
+  return {
+    ...buffer,
+    edgeSourceIndices: buffer.edgeSourceIndices.slice(0, count),
+    edgeTargetIndices: buffer.edgeTargetIndices.slice(0, count),
+    edgeLayers: (buffer.edgeLayers ?? buffer.layer ?? new Uint8Array(0)).slice(0, count),
+    edgeCount: count,
+  };
+}
+
+function edgeCapLabel(mode: FullGraphEdgeCapMode): string {
+  if (mode === "high") return "high";
+  if (mode === "experimental") return "experimental";
+  return "default";
+}
+
+function listUnique(items: string[]): string[] {
+  return Array.from(new Set(items.filter(Boolean)));
 }
 
 function compactValue(value: unknown, maxLength = 72): string {
@@ -443,12 +645,21 @@ export default function App() {
   const [communityPayload, setCommunityPayload] =
     useState<CommunityPayloadDTO | null>(null);
   const [fullGraph, setFullGraph] = useState<GraphPayloadDTO | null>(null);
+  const [fullGraphEdgeBuffer, setFullGraphEdgeBuffer] =
+    useState<StaticEdgeBuffer | null>(null);
+  const [prefetchedEdgeTile, setPrefetchedEdgeTile] =
+    useState<PreparedFullGraphEdgeTile | null>(null);
   const [fullGraphProgress, setFullGraphProgress] = useState("");
+  const [fullEdgeTiles, setFullEdgeTiles] = useState<FullGraphEdgeTileState>(
+    initialFullGraphEdgeTileState,
+  );
   const [edgeMode, setEdgeMode] = useState<EdgeMode>("focus");
   const [fullEdgeMode, setFullEdgeMode] = useState<EdgeMode>(FULL_3D_SAFE_EDGE_MODE);
   const [fullEdgeStrength, setFullEdgeStrength] = useState(1.4);
   const [showFullWarning, setShowFullWarning] = useState(false);
   const [showAllEdgesWarning, setShowAllEdgesWarning] = useState(false);
+  const [showExperimentalEdgeCapWarning, setShowExperimentalEdgeCapWarning] =
+    useState(false);
   const [legalReviewChecks, setLegalReviewChecks] = useState<
     Record<LegalReviewCheckId, boolean>
   >({
@@ -605,6 +816,21 @@ export default function App() {
     [graphCatalog],
   );
   const fullGraphLimits = activeGraphPreset;
+  const fullGraphExpectedNodeCount =
+    health?.nodes ?? activeGraphCatalogItem.nodes ?? 124_263;
+  const fullGraphExperimentalEdgeCap =
+    health?.edges ??
+    activeGraphCatalogItem.edges ??
+    FULL_3D_EXPERIMENTAL_EDGE_CAP_FALLBACK;
+  const fullGraphTileRemainingCapacity = Math.max(
+    0,
+    fullEdgeTiles.visibleEdgeCap - fullEdgeTiles.loadedEdges,
+  );
+  const fullGraphNodeIndexById = useMemo(() => {
+    const nodeIndex = new Map<string, number>();
+    fullGraph?.nodes.forEach((node, index) => nodeIndex.set(node.id, index));
+    return nodeIndex;
+  }, [fullGraph]);
   const activeDocLinks = useMemo(
     () =>
       activeGraphKey === "precedent-kr"
@@ -712,6 +938,75 @@ export default function App() {
     return err instanceof ApiError && err.status === 499;
   }
 
+  function tileRequestInFlightCount(): number {
+    return Number(Boolean(controllers.current["edge-tile"])) + Number(Boolean(controllers.current["edge-tile-prefetch"]));
+  }
+
+  function updateTileRequestInFlightStatus(status?: Partial<FullGraphEdgeTileState>) {
+    setFullEdgeTiles((current) => ({
+      ...current,
+      ...status,
+      inFlightTileRequests: tileRequestInFlightCount(),
+    }));
+  }
+
+  function clearFullGraphTileRuntimeState(nextState = initialFullGraphEdgeTileState()) {
+    controllers.current["edge-tile"]?.abort();
+    controllers.current["edge-tile-prefetch"]?.abort();
+    controllers.current["edge-tile"] = undefined;
+    controllers.current["edge-tile-prefetch"] = undefined;
+    setFullGraphEdgeBuffer(null);
+    setPrefetchedEdgeTile(null);
+    setFullEdgeTiles(nextState);
+  }
+
+  function edgeCapForMode(mode: FullGraphEdgeCapMode): number {
+    if (mode === "high") return FULL_3D_HIGH_VISIBLE_EDGE_CAP;
+    if (mode === "experimental") return fullGraphExperimentalEdgeCap;
+    return FULL_3D_DEFAULT_VISIBLE_EDGE_CAP;
+  }
+
+  function applyFullGraphEdgeCapMode(mode: FullGraphEdgeCapMode) {
+    const cap = edgeCapForMode(mode);
+    const truncated = truncateStaticEdgeBuffer(fullGraphEdgeBuffer, cap);
+    const loadedEdges = staticEdgeBufferCount(truncated);
+    setFullGraphEdgeBuffer(truncated);
+    setPrefetchedEdgeTile(null);
+    setFullEdgeTiles((current) => ({
+      ...current,
+      visibleEdgeCap: cap,
+      capMode: mode,
+      experimentalFullEdgesEnabled: mode === "experimental",
+      loadedEdges,
+      hasMore: loadedEdges < (current.totalEdges ?? fullGraphExperimentalEdgeCap),
+      prefetchStatus: current.prefetchEnabled ? "idle" : "off",
+      prefetchPausedReason: "",
+      prefetchedTile: null,
+      prefetchedEdges: 0,
+      status: `edge memory cap을 ${edgeCapLabel(mode)} ${cap.toLocaleString()} edges로 변경했습니다.${loadedEdges < staticEdgeBufferCount(fullGraphEdgeBuffer) ? " 초과분은 evict했습니다." : ""}`,
+    }));
+  }
+
+  function toggleFullGraphTilePrefetch() {
+    const nextEnabled = !fullEdgeTiles.prefetchEnabled;
+    setFullEdgeTiles((current) => ({
+      ...current,
+      prefetchEnabled: nextEnabled,
+      prefetchStatus: nextEnabled ? "idle" : "off",
+      prefetchPausedReason: "",
+      status: nextEnabled ? "다음 edge tile prefetch를 활성화했습니다." : "edge tile prefetch를 비활성화했습니다.",
+    }));
+    if (!nextEnabled) {
+      controllers.current["edge-tile-prefetch"]?.abort();
+      controllers.current["edge-tile-prefetch"] = undefined;
+      setPrefetchedEdgeTile(null);
+      return;
+    }
+    window.setTimeout(() => {
+      void prefetchNextFullGraphEdgeTile(undefined, true);
+    }, 0);
+  }
+
   function resetGraphWorkspace(graphKey: GraphKey, nextQuestion?: string) {
     Object.values(controllers.current).forEach((controller) =>
       controller?.abort(),
@@ -731,7 +1026,10 @@ export default function App() {
     setSubgraph(null);
     setCommunityPayload(null);
     setFullGraph(null);
+    setFullGraphEdgeBuffer(null);
+    setPrefetchedEdgeTile(null);
     setFullGraphProgress("");
+    setFullEdgeTiles(initialFullGraphEdgeTileState());
     setFullEdgeMode(FULL_3D_SAFE_EDGE_MODE);
     setError("");
     setLoading("");
@@ -1170,20 +1468,29 @@ export default function App() {
     setLoading("full3d");
     setError("");
     setTab("full3d");
+    clearFullGraphTileRuntimeState();
     setFullGraphProgress(
       fullGraphRequestCopy(mode, focusNode, confirmAllEdges, allNodes),
     );
     try {
-      const graph = await getFullGraph3d(
-        {
-          edge_mode: mode,
-          focus_node_id: focusNode,
-          confirm_all_edges: mode === "all" ? true : undefined,
-          ...fullGraphRequestParams(mode, confirmAllEdges, allNodes),
-        },
-        controller.signal,
-        activeGraphKey,
-      );
+      const requestParams = {
+        edge_mode: mode,
+        focus_node_id: focusNode,
+        confirm_all_edges: mode === "all" ? true : undefined,
+        ...fullGraphRequestParams(mode, confirmAllEdges, allNodes),
+      };
+      const graph =
+        activeGraphKey === "precedent-kr" && allNodes
+          ? await getFullGraphNodesBinaryWithWorker(
+              requestParams,
+              controller.signal,
+              activeGraphKey,
+            )
+          : await getFullGraph3dWithWorker(
+              requestParams,
+              controller.signal,
+              activeGraphKey,
+            );
       if (!isCurrentRequest("full3d", controller)) return;
       const graphWithLayout = {
         ...graph,
@@ -1191,12 +1498,20 @@ export default function App() {
       };
       setFullGraph(graphWithLayout);
       setFullEdgeMode(mode);
+      setFullEdgeTiles({
+        ...initialFullGraphEdgeTileState(),
+        totalEdges: activeGraphKey === "precedent-kr" ? (health?.edges ?? null) : null,
+        status:
+          activeGraphKey === "precedent-kr" && allNodes
+            ? "전체 node layout 준비 완료 · edge tile을 추가로 불러올 수 있습니다."
+            : "",
+      });
       const boundedLabel = graphWithLayout.partial ? " · bounded safe payload" : "";
       const warningLabel = graphWithLayout.warnings?.length
         ? ` · ${graphWithLayout.warnings[0]}`
         : "";
       setFullGraphProgress(
-        `로드 완료: ${graphWithLayout.nodes.length.toLocaleString()} nodes · ${graphWithLayout.edges.length.toLocaleString()} edges · edge mode ${graphWithLayout.edge_mode || mode} · layout ${graphWithLayout.layout_mode}${boundedLabel}${warningLabel}`,
+        `로드 완료: ${graphWithLayout.nodes.length.toLocaleString()} nodes · ${graphWithLayout.edges.length.toLocaleString()} edges · edge mode ${graphWithLayout.edge_mode || mode} · layout ${graphWithLayout.layout_mode}${activeGraphKey === "precedent-kr" && allNodes ? " · GF3N binary worker" : ""}${boundedLabel}${warningLabel}`,
       );
     } catch (err) {
       if (isCanceledError(err)) {
@@ -1212,6 +1527,226 @@ export default function App() {
     } finally {
       if (isCurrentRequest("full3d", controller)) setLoading("");
       finishRequest("full3d", controller);
+    }
+  }
+
+  function fullGraphTilePrerequisiteMessage(): string {
+    if (activeGraphKey !== "precedent-kr") return "edge tile은 precedent-kr full graph에서만 사용합니다.";
+    if (!fullGraph?.nodes.length) return "먼저 전체 124k 노드만 보기를 로드해야 edge tile을 추가할 수 있습니다.";
+    if (fullGraph.nodes.length < fullGraphExpectedNodeCount) {
+      return "현재 화면은 sampled node view입니다. 전체 124k 노드만 보기 후 edge tile을 추가하세요.";
+    }
+    return "";
+  }
+
+  function memoryCapPauseMessage(): string {
+    const capLabel = edgeCapLabel(fullEdgeTiles.capMode);
+    if (fullGraphTileRemainingCapacity <= 0) {
+      return `prefetch paused by memory cap · ${capLabel} cap ${fullEdgeTiles.visibleEdgeCap.toLocaleString()} visible edges 도달`;
+    }
+    if (fullEdgeTiles.capMode !== "experimental" && fullGraphTileRemainingCapacity < fullEdgeTiles.tileSize) {
+      return `prefetch paused by memory cap · 남은 ${fullGraphTileRemainingCapacity.toLocaleString()} edges가 tile size보다 작습니다. high/experimental cap을 선택하세요.`;
+    }
+    return "";
+  }
+
+  function canStartFullGraphTileRequest(purpose: "manual" | "prefetch"): boolean {
+    const prerequisite = fullGraphTilePrerequisiteMessage();
+    if (prerequisite) {
+      setFullEdgeTiles((current) => ({
+        ...current,
+        status: prerequisite,
+        prefetchStatus: purpose === "prefetch" && current.prefetchEnabled ? "paused" : current.prefetchStatus,
+        prefetchPausedReason: purpose === "prefetch" ? prerequisite : current.prefetchPausedReason,
+      }));
+      return false;
+    }
+    if (!fullEdgeTiles.hasMore) {
+      setFullEdgeTiles((current) => ({ ...current, status: "모든 edge tile을 로드했습니다." }));
+      return false;
+    }
+    if (tileRequestInFlightCount() >= FULL_3D_TILE_IN_FLIGHT_LIMIT) {
+      setFullEdgeTiles((current) => ({
+        ...current,
+        status: `in-flight tile request ${FULL_3D_TILE_IN_FLIGHT_LIMIT}개 제한으로 ${purpose === "prefetch" ? "prefetch" : "load"}를 대기합니다.`,
+        prefetchStatus: purpose === "prefetch" && current.prefetchEnabled ? "paused" : current.prefetchStatus,
+        prefetchPausedReason: purpose === "prefetch" ? "in-flight tile request limit" : current.prefetchPausedReason,
+      }));
+      return false;
+    }
+    const memoryPause = memoryCapPauseMessage();
+    if (memoryPause) {
+      setFullEdgeTiles((current) => ({
+        ...current,
+        status: memoryPause,
+        prefetchStatus: current.prefetchEnabled ? "paused" : current.prefetchStatus,
+        prefetchPausedReason: "memory cap",
+      }));
+      return false;
+    }
+    return true;
+  }
+
+  async function requestFullGraphEdgeTileViaCurrentLoader(tileIndex: number, controller: AbortController): Promise<PreparedFullGraphEdgeTile> {
+    if (!fullGraph) throw new Error("Full graph node layout is not loaded.");
+    // Integration boundary: replace this one call if worker/API naming changes.
+    const tile = await getFullGraphEdgeTileBinaryWithPersistentWorker(
+      {
+        edge_mode: "all",
+        confirm_all_edges: true,
+        tile: tileIndex,
+        tile_size: fullEdgeTiles.tileSize,
+      },
+      controller.signal,
+      activeGraphKey,
+    );
+    const remainingCapacity = Math.max(0, fullEdgeTiles.visibleEdgeCap - staticEdgeBufferCount(fullGraphEdgeBuffer));
+    const tileEdgeCount = tile.edgeSourceIndices && tile.edgeTargetIndices
+      ? Math.min(tile.returned_edges, tile.edgeSourceIndices.length, tile.edgeTargetIndices.length)
+      : tile.edges.length;
+    const maxEdges = Math.max(0, Math.min(tileEdgeCount, remainingCapacity));
+    return prepareFullGraphEdgeTile(tile, fullGraphNodeIndexById, maxEdges);
+  }
+
+  function commitPreparedFullGraphEdgeTile(tile: PreparedFullGraphEdgeTile, source: "manual" | "prefetch") {
+    const previousCount = staticEdgeBufferCount(fullGraphEdgeBuffer);
+    const nextBuffer = mergeStaticEdgeBuffers(fullGraphEdgeBuffer, tile, fullEdgeTiles.visibleEdgeCap);
+    const nextCount = staticEdgeBufferCount(nextBuffer);
+    const addedEdges = nextCount - previousCount;
+    if (addedEdges <= 0) {
+      setFullEdgeTiles((current) => ({
+        ...current,
+        status: "memory cap 때문에 edge tile을 추가하지 않았습니다. high/experimental cap을 선택하세요.",
+        prefetchStatus: current.prefetchEnabled ? "paused" : current.prefetchStatus,
+        prefetchPausedReason: "memory cap",
+      }));
+      return;
+    }
+
+    setFullGraphEdgeBuffer(nextBuffer);
+    setPrefetchedEdgeTile((current) => (current?.tile === tile.tile ? null : current));
+    setFullGraph((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        edge_mode: "all",
+        partial: tile.hasMore,
+        warnings: listUnique([
+          ...(current.warnings ?? []),
+          ...tile.warnings,
+          `typed edge tile committed: ${addedEdges.toLocaleString()} visible edges`,
+        ]),
+      };
+    });
+    setFullEdgeMode("all");
+    setFullEdgeTiles((current) => ({
+      ...current,
+      nextTile: Math.max(current.nextTile, tile.tile + 1),
+      loadedEdges: nextCount,
+      totalEdges: tile.totalEdges,
+      hasMore: tile.hasMore,
+      status: `${source === "prefetch" ? "prefetched" : "binary"} edge tile ${tile.tile.toLocaleString()} commit 완료 · ${addedEdges.toLocaleString()} typed edges 추가 · ${nextCount.toLocaleString()} / ${current.visibleEdgeCap.toLocaleString()} cap`,
+      prefetchStatus: current.prefetchEnabled ? "idle" : "off",
+      prefetchPausedReason: "",
+      prefetchedTile: null,
+      prefetchedEdges: 0,
+    }));
+    setFullGraphProgress(
+      `Progressive typed edge tiles: ${nextCount.toLocaleString()} / ${tile.totalEdges.toLocaleString()} edges · cap ${fullEdgeTiles.visibleEdgeCap.toLocaleString()} · static BufferGeometry typed-index path`,
+    );
+
+    if (fullEdgeTiles.prefetchEnabled && tile.hasMore) {
+      window.setTimeout(() => {
+        void prefetchNextFullGraphEdgeTile(tile.tile + 1, true);
+      }, 0);
+    }
+  }
+
+  async function prefetchNextFullGraphEdgeTile(tileOverride?: number, force = false) {
+    if (!force && !fullEdgeTiles.prefetchEnabled) return;
+    if (prefetchedEdgeTile && prefetchedEdgeTile.tile === fullEdgeTiles.nextTile) return;
+    if (!canStartFullGraphTileRequest("prefetch")) return;
+
+    const tileIndex = tileOverride ?? fullEdgeTiles.nextTile;
+    const controller = nextController("edge-tile-prefetch");
+    updateTileRequestInFlightStatus({
+      prefetchEnabled: true,
+      prefetchStatus: "loading",
+      prefetchPausedReason: "",
+      prefetchedTile: null,
+      prefetchedEdges: 0,
+      status: `prefetch tile ${tileIndex.toLocaleString()} 요청 중 · in-flight ${FULL_3D_TILE_IN_FLIGHT_LIMIT} cap`,
+    });
+    try {
+      const prepared = await requestFullGraphEdgeTileViaCurrentLoader(tileIndex, controller);
+      if (!isCurrentRequest("edge-tile-prefetch", controller)) return;
+      setPrefetchedEdgeTile(prepared);
+      setFullEdgeTiles((current) => ({
+        ...current,
+        prefetchEnabled: true,
+        prefetchStatus: "ready",
+        prefetchPausedReason: "",
+        prefetchedTile: prepared.tile,
+        prefetchedEdges: prepared.edgeCount ?? 0,
+        totalEdges: prepared.totalEdges,
+        status: `prefetched tile ready · tile ${prepared.tile.toLocaleString()} · ${(prepared.edgeCount ?? 0).toLocaleString()} typed edges`,
+      }));
+    } catch (err) {
+      if (isCanceledError(err)) {
+        setFullEdgeTiles((current) => ({
+          ...current,
+          prefetchStatus: current.prefetchEnabled ? "paused" : "off",
+          prefetchPausedReason: "request canceled",
+          status: "edge tile prefetch를 취소했습니다.",
+        }));
+        return;
+      }
+      const message = err instanceof Error ? err.message : "edge tile prefetch 실패";
+      setFullEdgeTiles((current) => ({
+        ...current,
+        prefetchStatus: "error",
+        prefetchPausedReason: message,
+        status: message,
+      }));
+    } finally {
+      finishRequest("edge-tile-prefetch", controller);
+      updateTileRequestInFlightStatus();
+    }
+  }
+
+  async function loadNextFullGraphEdgeTile() {
+    if (!canStartFullGraphTileRequest("manual")) return;
+
+    if (prefetchedEdgeTile && prefetchedEdgeTile.tile === fullEdgeTiles.nextTile) {
+      commitPreparedFullGraphEdgeTile(prefetchedEdgeTile, "prefetch");
+      return;
+    }
+
+    const controller = nextController("edge-tile");
+    setLoading("edge-tile");
+    setError("");
+    updateTileRequestInFlightStatus({
+      status: `typed binary edge tile ${fullEdgeTiles.nextTile.toLocaleString()} 요청 중 · persistent worker decode · ${fullEdgeTiles.tileSize.toLocaleString()} edges chunk`,
+    });
+    try {
+      const prepared = await requestFullGraphEdgeTileViaCurrentLoader(fullEdgeTiles.nextTile, controller);
+      if (!isCurrentRequest("edge-tile", controller)) return;
+      commitPreparedFullGraphEdgeTile(prepared, "manual");
+    } catch (err) {
+      if (isCanceledError(err)) {
+        setFullEdgeTiles((current) => ({
+          ...current,
+          status: "edge tile 요청을 취소했습니다.",
+        }));
+        return;
+      }
+      const message = err instanceof Error ? err.message : "edge tile 로딩 실패";
+      setFullEdgeTiles((current) => ({ ...current, status: message }));
+      setError(message);
+    } finally {
+      if (isCurrentRequest("edge-tile", controller)) setLoading("");
+      finishRequest("edge-tile", controller);
+      updateTileRequestInFlightStatus();
     }
   }
 
@@ -2263,6 +2798,15 @@ export default function App() {
                       ? "raw static mode"
                       : "safe mode"}
                   </span>
+                  <span className="lg-chip" data-tone={fullGraphTileRemainingCapacity <= 0 ? "warning" : "accent"}>
+                    edge cap {fullEdgeTiles.loadedEdges.toLocaleString()} / {fullEdgeTiles.visibleEdgeCap.toLocaleString()}
+                  </span>
+                  <span className="lg-chip" data-tone={fullEdgeTiles.inFlightTileRequests ? "warning" : undefined}>
+                    in-flight {fullEdgeTiles.inFlightTileRequests} / {FULL_3D_TILE_IN_FLIGHT_LIMIT}
+                  </span>
+                  <span className="lg-chip" data-tone={fullEdgeTiles.prefetchStatus === "ready" ? "accent" : fullEdgeTiles.prefetchStatus === "paused" || fullEdgeTiles.prefetchStatus === "error" ? "warning" : undefined}>
+                    prefetch {fullEdgeTiles.prefetchStatus}
+                  </span>
                 </div>
                 <strong>
                   {fullGraphProgress || "전체 그래프 요청을 준비 중입니다."}
@@ -2297,6 +2841,97 @@ export default function App() {
                     전체 124k 노드만 보기
                   </button>
                 ) : null}
+                {activeGraphKey === "precedent-kr" && fullGraph ? (
+                  <div className="lg-edge-tile-controls">
+                    <span className="lg-chip" data-tone="accent">
+                      edge tiles {fullEdgeTiles.loadedEdges.toLocaleString()} /{" "}
+                      {(fullEdgeTiles.totalEdges ?? health?.edges ?? activeGraphCatalogItem.edges ?? 0).toLocaleString()}
+                    </span>
+                    <span className="lg-chip" data-tone={fullGraphTileRemainingCapacity <= 0 ? "warning" : undefined}>
+                      memory {edgeCapLabel(fullEdgeTiles.capMode)} cap · 남은 {fullGraphTileRemainingCapacity.toLocaleString()}
+                    </span>
+                    <span className="lg-chip" data-tone={fullEdgeTiles.prefetchStatus === "ready" ? "accent" : fullEdgeTiles.prefetchStatus === "paused" || fullEdgeTiles.prefetchStatus === "error" ? "warning" : undefined}>
+                      {fullEdgeTiles.prefetchStatus === "ready"
+                        ? `prefetched tile ${fullEdgeTiles.prefetchedTile ?? "—"} ready`
+                        : fullEdgeTiles.prefetchStatus === "paused"
+                          ? `prefetch paused${fullEdgeTiles.prefetchPausedReason ? ` · ${fullEdgeTiles.prefetchPausedReason}` : ""}`
+                          : `prefetch ${fullEdgeTiles.prefetchStatus}`}
+                    </span>
+                    <div className="lg-edge-cap-buttons" aria-label="edge memory cap">
+                      <button
+                        className="lg-button"
+                        type="button"
+                        data-variant={fullEdgeTiles.capMode === "default" ? "primary" : undefined}
+                        onClick={() => applyFullGraphEdgeCapMode("default")}
+                      >
+                        cap 100k
+                      </button>
+                      <button
+                        className="lg-button"
+                        type="button"
+                        data-variant={fullEdgeTiles.capMode === "high" ? "primary" : undefined}
+                        onClick={() => applyFullGraphEdgeCapMode("high")}
+                      >
+                        high 250k
+                      </button>
+                      <button
+                        className="lg-button"
+                        type="button"
+                        data-variant={fullEdgeTiles.capMode === "experimental" ? "primary" : undefined}
+                        onClick={() => setShowExperimentalEdgeCapWarning(true)}
+                      >
+                        experimental full
+                      </button>
+                    </div>
+                    <button
+                      className="lg-button"
+                      type="button"
+                      disabled={
+                        loading === "edge-tile" ||
+                        fullEdgeTiles.inFlightTileRequests >= FULL_3D_TILE_IN_FLIGHT_LIMIT ||
+                        fullGraphTileRemainingCapacity <= 0 ||
+                        !fullEdgeTiles.hasMore ||
+                        fullGraph.nodes.length < fullGraphExpectedNodeCount
+                      }
+                      onClick={() => void loadNextFullGraphEdgeTile()}
+                      aria-label="판례 그래프 edge tile 추가 로드"
+                    >
+                      {loading === "edge-tile"
+                        ? "Edge tile 로딩 중…"
+                        : fullGraph.nodes.length < fullGraphExpectedNodeCount
+                          ? "전체 노드 후 edge tile"
+                          : prefetchedEdgeTile?.tile === fullEdgeTiles.nextTile
+	                            ? `Prefetched tile ${fullEdgeTiles.nextTile.toLocaleString()} commit`
+	                            : fullGraphTileRemainingCapacity <= 0
+	                              ? "memory cap 도달"
+	                              : fullEdgeTiles.hasMore
+	                                ? `Edge ${fullEdgeTiles.tileSize.toLocaleString()}개 추가`
+	                                : "모든 tile 로드됨"}
+                    </button>
+                    <button
+                      className="lg-button"
+                      type="button"
+                      disabled={fullEdgeTiles.inFlightTileRequests >= FULL_3D_TILE_IN_FLIGHT_LIMIT && !fullEdgeTiles.prefetchEnabled}
+                      onClick={toggleFullGraphTilePrefetch}
+                      aria-label="다음 edge tile prefetch 토글"
+                    >
+                      {fullEdgeTiles.prefetchEnabled ? "Prefetch 끄기" : "Prefetch 켜기"}
+                    </button>
+                    {loading === "edge-tile" ? (
+                      <button
+                        className="lg-button"
+                        type="button"
+                        onClick={() => abortRequest("edge-tile")}
+                        aria-label="edge tile 요청 취소"
+                      >
+                        Edge tile 취소
+                      </button>
+                    ) : null}
+                    {fullEdgeTiles.status ? (
+                      <small>{fullEdgeTiles.status}</small>
+                    ) : null}
+                  </div>
+                ) : null}
                 {loading === "full3d" ? (
                   <button
                     className="lg-button"
@@ -2309,37 +2944,72 @@ export default function App() {
                 ) : null}
               </div>
             ) : null}
-            <Suspense
-              fallback={<GraphWorkspaceFallback label="Full 3D Graph" />}
-            >
-              <WebGLGraph
-                title={`Full 3D Graph opt-in · ${activeGraphPreset.shortLabel}`}
-                payload={fullGraph}
-                emptyText="전체 3D 그래프는 성능 경고 확인 후 lazy-load됩니다."
-                edgeMode={fullEdgeMode}
-                onEdgeModeChange={(mode) => {
-                  void loadFullGraph(mode);
-                }}
-                selectedNodeId={
-                  selectedNodeId.startsWith("community-")
-                    ? undefined
-                    : selectedNodeId
-                }
-                onSelectNode={(node) => {
-                  void loadNodeExplain(node, { updateSubgraph: false });
-                  if (fullEdgeMode === "focus")
-                    void loadFullGraph("focus", node.id);
-                }}
-                performanceProfile="large"
-                edgeStrength={fullEdgeStrength}
-                onEdgeStrengthChange={setFullEdgeStrength}
-                loading={loading === "full3d"}
-                loadingLabel={
-                  fullGraphProgress ||
-                  "전체 그래프 payload를 가져오는 중입니다…"
-                }
-              />
-            </Suspense>
+            {fullGraph ? (
+              <section
+                className="lg-graph-viewport lg-webgl-viewport lg-fullgraph-static-viewport"
+                data-edge-mode={fullEdgeMode}
+                data-render-mode="static"
+                aria-label={`Full 3D Graph opt-in · ${activeGraphPreset.shortLabel}`}
+              >
+                <div className="lg-graph-toolbar" aria-label="Full graph static toolbar">
+                  <div className="lg-graph-toolbar__group">
+                    <button
+                      type="button"
+                      className="lg-button"
+                      onClick={() => setFullEdgeMode((current) => (current === "hidden" ? "all" : "hidden"))}
+                    >
+                      {fullEdgeMode === "hidden" ? "Show loaded edges" : "Hide loaded edges"}
+                    </button>
+                    <label className="lg-edge-strength-control">
+                      <span>Line strength {fullEdgeStrength.toFixed(1)}x</span>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="3"
+                        step="0.1"
+                        value={fullEdgeStrength}
+                        onChange={(event) => setFullEdgeStrength(Number(event.currentTarget.value))}
+                        aria-label="Full graph edge line strength"
+                      />
+                    </label>
+                  </div>
+                  <div className="lg-graph-toolbar__group lg-graph-toolbar__meta" aria-live="polite">
+                    <span className="lg-chip" data-tone="accent">static BufferGeometry</span>
+                    <span className="lg-chip" data-tone={fullGraphEdgeBuffer ? "accent" : undefined}>
+                      {fullGraphEdgeBuffer ? "typed-array edge buffer" : "DTO edge path"}
+                    </span>
+                    <span className="lg-chip">
+                      {fullGraph.nodes.length.toLocaleString()} nodes
+                    </span>
+                    <span className="lg-chip">
+                      {staticEdgeBufferCount(fullGraphEdgeBuffer).toLocaleString()} typed edges
+                    </span>
+                    <span className="lg-chip">
+                      dto {fullGraph.edges.length.toLocaleString()} edges
+                    </span>
+                  </div>
+                </div>
+                <div className="lg-webgl-canvas lg-webgl-canvas--static" role="img" aria-label={`Full graph static renderer for ${fullGraph.nodes.length} nodes`}>
+                  <StaticBufferGraph
+                    title={`Full 3D Graph opt-in · ${activeGraphPreset.shortLabel}`}
+                    payload={fullGraph}
+                    edgeMode={fullEdgeMode}
+                    edgeBuffer={fullGraphEdgeBuffer}
+                    selectedNodeId={selectedNodeId.startsWith("community-") ? undefined : selectedNodeId}
+                    onSelectNode={(node) => {
+                      void loadNodeExplain(node, { updateSubgraph: false });
+                    }}
+                    edgeStrength={fullEdgeStrength}
+                  />
+                </div>
+              </section>
+            ) : loading === "full3d" ? (
+              <GraphWorkspaceFallback label="Full 3D Graph" />
+            ) : (
+              <div className="lg-empty-state">
+                전체 3D 그래프는 성능 경고 확인 후 lazy-load됩니다.
+              </div>
+            )}
           </section>
         ) : null}
 
@@ -2642,6 +3312,26 @@ export default function App() {
           </p>
           <p>
             이 작업은 backend spherical 3D x/y/z 좌표와 static renderer를 사용해 force simulation 없이 렌더링합니다.
+          </p>
+        </WarningModal>
+      ) : null}
+
+      {showExperimentalEdgeCapWarning ? (
+        <WarningModal
+          title="Experimental full-edge cap을 켭니다"
+          confirmLabel="761k cap 허용"
+          onConfirm={() => {
+            setShowExperimentalEdgeCapWarning(false);
+            applyFullGraphEdgeCapMode("experimental");
+          }}
+          onCancel={() => setShowExperimentalEdgeCapWarning(false)}
+        >
+          <p>
+            이 옵션은 visible edge cap을 {(fullGraphExperimentalEdgeCap ?? FULL_3D_EXPERIMENTAL_EDGE_CAP_FALLBACK).toLocaleString()}개까지 올립니다.
+            기본값은 100k, high는 250k이며 full edge는 실험적 opt-in에서만 허용합니다.
+          </p>
+          <p>
+            in-flight tile request는 계속 1개로 제한되고, prefetch는 memory cap 여유가 있을 때 다음 tile 1개만 준비합니다.
           </p>
         </WarningModal>
       ) : null}

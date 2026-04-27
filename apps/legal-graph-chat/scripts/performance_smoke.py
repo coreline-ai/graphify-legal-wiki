@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import struct
 import sys
 import time
 import urllib.error
@@ -30,6 +31,8 @@ class SmokeResult:
     edge_count: int | None = None
     community_count: int | None = None
     warning_count: int | None = None
+    process_time_ms: float | None = None
+    decoded_header_bytes: int | None = None
     skipped: bool = False
     skip_reason: str | None = None
     error: str | None = None
@@ -46,16 +49,17 @@ class LocalClient:
 
         self._client = TestClient(app)
 
-    def request(self, method: str, path: str, body: dict[str, Any] | None = None) -> tuple[int, bytes, Any]:
+    def request(self, method: str, path: str, body: dict[str, Any] | None = None) -> tuple[int, bytes, Any, dict[str, str]]:
         response = self._client.request(method, path, json=body)
-        return response.status_code, response.content, response.json()
+        headers = {str(key).lower(): str(value) for key, value in response.headers.items()}
+        return response.status_code, response.content, decode_payload(response.content, headers), headers
 
 
 class UrlClient:
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
 
-    def request(self, method: str, path: str, body: dict[str, Any] | None = None) -> tuple[int, bytes, Any]:
+    def request(self, method: str, path: str, body: dict[str, Any] | None = None) -> tuple[int, bytes, Any, dict[str, str]]:
         data = None
         headers = {"Accept": "application/json"}
         if body is not None:
@@ -65,14 +69,34 @@ class UrlClient:
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
                 content = response.read()
-                return response.status, content, json.loads(content.decode("utf-8"))
+                response_headers = {str(key).lower(): str(value) for key, value in response.headers.items()}
+                return response.status, content, decode_payload(content, response_headers), response_headers
         except urllib.error.HTTPError as exc:
             content = exc.read()
+            response_headers = {str(key).lower(): str(value) for key, value in exc.headers.items()}
             try:
                 payload = json.loads(content.decode("utf-8"))
             except json.JSONDecodeError:
                 payload = {"message": content.decode("utf-8", errors="replace")}
-            return exc.code, content, payload
+            return exc.code, content, payload, response_headers
+
+
+def decode_payload(content: bytes, headers: dict[str, str]) -> Any:
+    content_type = headers.get("content-type", "")
+    if "application/json" in content_type:
+        return json.loads(content.decode("utf-8"))
+    if len(content) >= 9 and content[:5] in {b"GF3D\x01", b"GF3E\x01", b"GF3N\x01"}:
+        header_length = struct.unpack("<I", content[5:9])[0]
+        header_end = 9 + header_length
+        header = json.loads(content[9:header_end].decode("utf-8")) if header_end <= len(content) else {}
+        return {
+            "binary_magic": content[:5].decode("latin1"),
+            "binary_header_bytes": header_length,
+            "binary_header": header,
+        }
+    if not content:
+        return {}
+    return {"message": content[:240].decode("utf-8", errors="replace")}
 
 
 def payload_size(content: bytes, payload: Any) -> int:
@@ -84,6 +108,13 @@ def payload_size(content: bytes, payload: Any) -> int:
 def counts(payload: Any) -> tuple[int | None, int | None, int | None, int | None]:
     if not isinstance(payload, dict):
         return None, None, None, None
+    binary_header = payload.get("binary_header")
+    if isinstance(binary_header, dict):
+        node_count = first_present(binary_header.get("node_count"), binary_header.get("nodes_in_scope"))
+        edge_count = first_present(binary_header.get("edge_count"), binary_header.get("returned_edges"), binary_header.get("total_edges"))
+        warnings = binary_header.get("warnings")
+        warning_count = len(warnings) if isinstance(warnings, list) else None
+        return as_int(node_count), as_int(edge_count), None, warning_count
     graph = payload.get("graph") if isinstance(payload.get("graph"), dict) else payload
     node_count = len(graph["nodes"]) if isinstance(graph.get("nodes"), list) else payload.get("nodes")
     edge_count = len(graph["edges"]) if isinstance(graph.get("edges"), list) else payload.get("edges")
@@ -102,6 +133,22 @@ def as_int(value: Any) -> int | None:
         return None
 
 
+def first_present(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def parse_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def run_request(
     client: LocalClient | UrlClient,
     name: str,
@@ -113,11 +160,12 @@ def run_request(
 ) -> tuple[SmokeResult, Any]:
     start = time.perf_counter()
     try:
-        status_code, content, payload = client.request(method, path, body)
+        status_code, content, payload, headers = client.request(method, path, body)
         latency_ms = (time.perf_counter() - start) * 1000
         node_count, edge_count, community_count, warning_count = counts(payload)
         skipped = optional and status_code in {404, 405}
         skip_reason = "optional endpoint is not implemented by this backend yet" if skipped else None
+        decoded_header_bytes = as_int(payload.get("binary_header_bytes")) if isinstance(payload, dict) else None
         result = SmokeResult(
             name=name,
             method=method,
@@ -129,6 +177,8 @@ def run_request(
             edge_count=edge_count,
             community_count=community_count,
             warning_count=warning_count,
+            process_time_ms=parse_float(headers.get("x-process-time-ms")),
+            decoded_header_bytes=decoded_header_bytes,
             skipped=skipped,
             skip_reason=skip_reason,
             error=None if skipped or 200 <= status_code < 300 else json.dumps(payload, ensure_ascii=False)[:240],
@@ -174,7 +224,9 @@ def print_table(results: list[SmokeResult]) -> None:
         "status",
         "result",
         "latency_ms",
+        "process_ms",
         "bytes",
+        "header_bytes",
         "nodes",
         "edges",
         "communities",
@@ -186,7 +238,9 @@ def print_table(results: list[SmokeResult]) -> None:
             "SKIP" if r.skipped else str(r.status_code),
             "skip" if r.skipped else ("ok" if 200 <= r.status_code < 300 else "fail"),
             f"{r.latency_ms:.1f}",
+            "" if r.process_time_ms is None else f"{r.process_time_ms:.1f}",
             str(r.payload_bytes),
+            "" if r.decoded_header_bytes is None else str(r.decoded_header_bytes),
             "" if r.node_count is None else str(r.node_count),
             "" if r.edge_count is None else str(r.edge_count),
             "" if r.community_count is None else str(r.community_count),
@@ -208,6 +262,8 @@ def main() -> int:
     parser.add_argument("--precedent-query", default=None, help="Query text used for /precedents/search. Defaults to --question.")
     parser.add_argument("--precedent-limit", type=int, default=5, help="Result limit used for /precedents/search.")
     parser.add_argument("--include-all", action="store_true", help="Also call /graph/full-3d?edge_mode=all&confirm_all_edges=true. Disabled by default because it can return 176k+ edges.")
+    parser.add_argument("--include-edge-tiles", action="store_true", help="Also measure first JSON/binary full-3d edge tile using confirm_all_edges=true.")
+    parser.add_argument("--tile-size", type=int, default=25_000, help="Tile size used with --include-edge-tiles.")
     parser.add_argument("--strict-optional", action="store_true", help="Treat missing optional /answer and /precedents endpoints as failures instead of skips.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON instead of a table.")
     args = parser.parse_args()
@@ -222,6 +278,8 @@ def main() -> int:
         ("subgraph_3d", "POST", "/subgraph/3d", {"question": args.question, "max_nodes": 120, "max_edges": 500}),
         ("communities_3d", "GET", "/communities/3d", None),
         ("full_3d_hidden", "GET", "/graph/full-3d?edge_mode=hidden", None),
+        ("full_3d_binary_hidden", "GET", "/graph/full-3d/binary?edge_mode=hidden", None),
+        ("full_3d_nodes_binary", "GET", "/graph/full-3d/nodes/binary", None),
     ]:
         result, payload = run_request(client, name, method, path, body)
         results.append(result)
@@ -238,6 +296,15 @@ def main() -> int:
     if args.include_all:
         result, _ = run_request(client, "full_3d_all", "GET", "/graph/full-3d?edge_mode=all&confirm_all_edges=true", None)
         results.append(result)
+
+    if args.include_edge_tiles:
+        tile_query = urllib.parse.urlencode({"edge_mode": "all", "confirm_all_edges": "true", "tile": 0, "tile_size": args.tile_size})
+        for name, path in [
+            ("full_3d_edge_tile_json", f"/graph/full-3d/edge-tile?{tile_query}"),
+            ("full_3d_edge_tile_binary", f"/graph/full-3d/edge-tile/binary?{tile_query}"),
+        ]:
+            result, _ = run_request(client, name, "GET", path, None)
+            results.append(result)
 
     precedent_query = args.precedent_query or args.question
     optional_requests: list[tuple[str, str, str, dict[str, Any] | None]] = [
@@ -270,6 +337,8 @@ def main() -> int:
                 print(f"- {item.name}: {item.skip_reason} ({item.method} {item.path} returned {item.status_code})")
         if not args.include_all:
             print("\nSkipped full_3d_all by default. Use --include-all only when intentionally measuring the full 176k-edge payload.")
+        if not args.include_edge_tiles:
+            print("\nSkipped edge tile measurements by default. Use --include-edge-tiles to measure JSON/binary tile payloads.")
 
     return 0 if all(r.skipped or 200 <= r.status_code < 300 for r in results) else 1
 

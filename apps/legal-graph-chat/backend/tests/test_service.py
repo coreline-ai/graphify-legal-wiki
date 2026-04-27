@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import struct
 from pathlib import Path
 
 import httpx
@@ -526,6 +527,49 @@ def test_full_graph_all_edges_fastapi_confirmation_param(fixture_client: TestCli
     assert len(confirmed["edges"]) == 3
 
 
+def test_full_graph_edge_tile_and_binary_fastapi_params(fixture_client: TestClient):
+    tile = fixture_client.get(
+        "/graph/full-3d/edge-tile",
+        params={"edge_mode": "all", "confirm_all_edges": "true", "tile": 0, "tile_size": 2},
+    )
+    binary = fixture_client.get(
+        "/graph/full-3d/binary",
+        params={"edge_mode": "all", "confirm_all_edges": "true", "edge_limit": 2},
+    )
+    edge_binary = fixture_client.get(
+        "/graph/full-3d/edge-tile/binary",
+        params={"edge_mode": "all", "confirm_all_edges": "true", "tile": 0, "tile_size": 2},
+    )
+
+    assert tile.status_code == 200
+    assert tile.json()["returned_edges"] == 2
+    assert tile.json()["total_edges"] == 3
+    assert binary.status_code == 200
+    assert binary.headers["content-type"] == "application/octet-stream"
+    assert binary.content[:5] == b"GF3D\x01"
+    assert edge_binary.status_code == 200
+    assert edge_binary.headers["x-graph-binary-format"] == "graphify.edge-tile.binary.v1"
+    assert edge_binary.content[:5] == b"GF3E\x01"
+
+
+def test_full_graph_nodes_binary_fastapi_query_params(fixture_client: TestClient):
+    response = fixture_client.get(
+        "/graph/full-3d/nodes/binary",
+        params={"community_id": "1", "min_degree": 1, "node_limit": 1, "static_layout_mode": "circular"},
+    )
+    assert response.status_code == 200
+    header_length = struct.unpack("<I", response.content[5:9])[0]
+    header = json.loads(response.content[9 : 9 + header_length].decode("utf-8"))
+
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert response.headers["x-graph-binary-format"] == "graphify.full3d.nodes.binary.v1"
+    assert response.content[:5] == b"GF3N\x01"
+    assert header["graph_id"] == "legalize-kr"
+    assert header["layout_mode"] == "circular"
+    assert header["node_count"] == 1
+    assert header["array_byte_lengths"]["positions"] == 12
+
+
 def test_full_graph_static_layout_includes_deterministic_coordinates(tmp_path: Path):
     service = fixture_service(tmp_path)
 
@@ -542,6 +586,140 @@ def test_full_graph_static_layout_includes_deterministic_coordinates(tmp_path: P
     assert [(node.id, node.x, node.y, node.z) for node in static.nodes] == [(node.id, node.x, node.y, node.z) for node in static_again.nodes]
     assert any("static_layout=true" in warning for warning in static.warnings)
     assert any("layout_mode=spherical" in warning for warning in static.warnings)
+
+
+def test_full_graph_static_layout_uses_disk_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("LEGAL_GRAPH_CACHE_DIR", str(tmp_path / "cache"))
+    service = fixture_service(tmp_path)
+
+    first = service.full_graph_3d(edge_mode="hidden", static_layout=True, static_layout_mode="spherical")
+    second = service.full_graph_3d(edge_mode="hidden", static_layout=True, static_layout_mode="spherical")
+
+    assert any("static layout disk cache miss" in warning for warning in first.warnings)
+    assert any("static layout disk cache hit" in warning for warning in second.warnings)
+    assert [(node.id, node.x, node.y, node.z) for node in first.nodes] == [(node.id, node.x, node.y, node.z) for node in second.nodes]
+
+
+def test_full_graph_edge_tile_paginates_confirmed_edges(tmp_path: Path):
+    service = fixture_service(tmp_path)
+
+    tile0 = service.full_graph_edge_tile(edge_mode="all", confirm_all_edges=True, tile=0, tile_size=2)
+    tile1 = service.full_graph_edge_tile(edge_mode="all", confirm_all_edges=True, tile=1, tile_size=2)
+    guarded = service.full_graph_edge_tile(edge_mode="all", confirm_all_edges=False, tile=0, tile_size=2)
+
+    assert tile0.total_edges == 3
+    assert tile0.returned_edges == 2
+    assert tile0.has_more is True
+    assert all(edge.metadata.get("lod_layer") for edge in tile0.edges)
+    assert tile1.returned_edges == 1
+    assert tile1.has_more is False
+    assert guarded.returned_edges == 0
+    assert any("confirm_all_edges=true" in warning for warning in guarded.warnings)
+
+
+def test_full_graph_binary_payload_has_header_and_arrays(tmp_path: Path):
+    service = fixture_service(tmp_path)
+
+    body, headers = service.full_graph_3d_binary(edge_mode="all", confirm_all_edges=True, edge_limit=2)
+    header_length = struct.unpack("<I", body[5:9])[0]
+    header = json.loads(body[9 : 9 + header_length].decode("utf-8"))
+
+    assert body[:5] == b"GF3D\x01"
+    assert headers["X-Graph-Binary-Format"] == "graphify.full3d.binary.v1"
+    assert header["node_count"] == 4
+    assert header["edge_count"] == 2
+    assert header["arrays"]["positions"]["type"] == "float32"
+
+
+def test_full_graph_nodes_binary_payload_has_compact_header_and_arrays(tmp_path: Path):
+    service = fixture_service(tmp_path)
+
+    body, headers = service.full_graph_3d_nodes_binary(static_layout_mode="spherical")
+    header_length = struct.unpack("<I", body[5:9])[0]
+    header = json.loads(body[9 : 9 + header_length].decode("utf-8"))
+    data_offset = 9 + header_length
+    array_lengths = header["array_byte_lengths"]
+    expected_body_length = 9 + header_length + sum(array_lengths.values())
+
+    assert body[:5] == b"GF3N\x01"
+    assert headers["X-Graph-Binary-Format"] == "graphify.full3d.nodes.binary.v1"
+    assert set(header) == {"graph_id", "layout_mode", "node_count", "array_byte_lengths", "schema"}
+    assert "nodes" not in header
+    assert "warnings" not in header
+    assert json.dumps(header, ensure_ascii=False).find("source_file") == -1
+    assert json.dumps(header, ensure_ascii=False).find("label") == -1
+    assert header["node_count"] == 4
+    assert array_lengths["positions"] == 4 * 3 * 4
+    assert array_lengths["sizes"] == 4 * 4
+    assert array_lengths["degrees"] == 4 * 4
+    assert array_lengths["communities"] == 4 * 4
+    assert array_lengths["flags"] == 4
+    assert array_lengths["ids"] == sum(4 + len(nid.encode("utf-8")) for nid in ["law_privacy", "law_egov", "law_civil", "hub_purpose"])
+    assert header["schema"]["degrees"]["type"] == "uint32"
+    assert header["schema"]["communities"]["type"] == "int32"
+    assert len(body) == expected_body_length
+
+    positions_offset = data_offset
+    sizes_offset = positions_offset + array_lengths["positions"]
+    degrees_offset = sizes_offset + array_lengths["sizes"]
+    communities_offset = degrees_offset + array_lengths["degrees"]
+    flags_offset = communities_offset + array_lengths["communities"]
+    ids_offset = flags_offset + array_lengths["flags"]
+    first_position = struct.unpack("<fff", body[positions_offset : positions_offset + 12])
+    first_size = struct.unpack("<f", body[sizes_offset : sizes_offset + 4])[0]
+    first_degree = struct.unpack("<I", body[degrees_offset : degrees_offset + 4])[0]
+    first_community = struct.unpack("<i", body[communities_offset : communities_offset + 4])[0]
+    first_flag = struct.unpack("<B", body[flags_offset : flags_offset + 1])[0]
+    first_id_length = struct.unpack("<I", body[ids_offset : ids_offset + 4])[0]
+    first_id = body[ids_offset + 4 : ids_offset + 4 + first_id_length].decode("utf-8")
+
+    assert all(isinstance(value, float) for value in first_position)
+    assert first_size > 0
+    assert first_degree == 2
+    assert first_community == 1
+    assert first_flag & 0b0000_0010
+    assert first_id == "law_privacy"
+
+
+def test_full_graph_nodes_binary_real_fixture_smoke_decodes_id_table(tmp_path: Path):
+    service = fixture_service(tmp_path)
+
+    body, _headers = service.full_graph_3d_nodes_binary()
+    header_length = struct.unpack("<I", body[5:9])[0]
+    header = json.loads(body[9 : 9 + header_length].decode("utf-8"))
+    id_offset = 9 + header_length + sum(
+        header["array_byte_lengths"][name]
+        for name in ("positions", "sizes", "degrees", "communities", "flags")
+    )
+    ids: list[str] = []
+    cursor = id_offset
+    for _ in range(header["node_count"]):
+        item_length = struct.unpack("<I", body[cursor : cursor + 4])[0]
+        cursor += 4
+        ids.append(body[cursor : cursor + item_length].decode("utf-8"))
+        cursor += item_length
+
+    assert cursor == len(body)
+    assert ids == ["law_privacy", "law_egov", "law_civil", "hub_purpose"]
+    assert "개인정보 보호법".encode("utf-8") not in body
+
+
+def test_full_graph_edge_tile_binary_payload_has_header_and_indices(tmp_path: Path):
+    service = fixture_service(tmp_path)
+
+    body, headers = service.full_graph_edge_tile_binary(edge_mode="all", confirm_all_edges=True, tile=0, tile_size=2)
+    header_length = struct.unpack("<I", body[5:9])[0]
+    header = json.loads(body[9 : 9 + header_length].decode("utf-8"))
+    edge_offset = 9 + header_length
+    first_pair = struct.unpack("<II", body[edge_offset : edge_offset + 8])
+
+    assert body[:5] == b"GF3E\x01"
+    assert headers["X-Graph-Binary-Format"] == "graphify.edge-tile.binary.v1"
+    assert header["returned_edges"] == 2
+    assert header["total_edges"] == 3
+    assert header["has_more"] is True
+    assert header["arrays"]["edges"]["type"] == "uint32"
+    assert max(first_pair) < 4
 
 
 def test_full_graph_circular_static_layout_is_deterministic(tmp_path: Path):
