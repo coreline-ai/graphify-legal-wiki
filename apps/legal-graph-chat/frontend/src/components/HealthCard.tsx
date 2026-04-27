@@ -4,21 +4,23 @@ interface HealthCardProps {
   health: NormalizedHealth | null;
   error?: string;
   compact?: boolean;
+  title?: string;
 }
 
 function formatCount(value: number | null): string {
   return typeof value === 'number' ? value.toLocaleString() : '—';
 }
 
-export function HealthCard({ health, error, compact = false }: HealthCardProps) {
+export function HealthCard({ health, error, compact = false, title }: HealthCardProps) {
   const state = error ? 'error' : health?.ok ? 'ready' : 'loading';
+  const heading = title ?? (compact ? 'Graph health' : 'Graph health');
 
   return (
     <section className="lg-card lg-health-card" data-state={state} aria-label="Graph health status">
       <div className="lg-health-card__header">
         <span className="lg-health-dot" aria-hidden="true" />
         <div>
-          <h2>{compact ? 'Graph health' : 'legalize-kr graph health'}</h2>
+          <h2>{heading}</h2>
           <p>{error ?? health?.statusText ?? 'backend 연결 확인 중'}</p>
         </div>
       </div>

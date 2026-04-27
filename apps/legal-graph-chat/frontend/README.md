@@ -21,12 +21,17 @@ npm run typecheck  # TypeScript only
 ## UX rules
 
 - The browser never fetches raw `graph.json`.
+- The sidebar graph selector switches the entire workspace between
+  `legalize-kr` 법령 graph and `precedent-kr` 판례 graph by sending the
+  selected `graph` query parameter to backend graph endpoints.
 - Chat answers always show evidence/source context when available.
 - 3D Subgraph, Community Overview, and Full 3D use lazy WebGL rendering with
   DOM/SVG fallback and `3D / 2D / evidence` view switching.
 - Full 3D requests backend `static_layout_mode=spherical` by default, so the
   safe overview and raw all-edge view render as a round 3D node-link graph.
   The legacy clustered and flat circular static layouts remain backend modes for comparison.
+- For `precedent-kr`, Full 3D remains bounded/sampled in the GUI because the
+  graph is much larger than the 법령 graph.
 - Graph search supports Enter or `Focus result` to select the first matching
   node and move the 3D camera focus.
 - Community nodes show member/edge counts, top God Nodes, wiki article access,

@@ -15,6 +15,7 @@ import json
 import math
 import os
 import re
+import shutil
 import sys
 from typing import Any
 
@@ -230,11 +231,12 @@ def choose_labels(G, communities: dict[int, list[str]]) -> dict[int, str]:
 
 
 def ensure_unique_labels(labels: dict[int, str]) -> dict[int, str]:
-    counts = Counter(labels.values())
+    normalized = {cid: label.strip() for cid, label in labels.items()}
+    counts = Counter(normalized.values())
     seen: Counter[str] = Counter()
     unique: dict[int, str] = {}
     for cid in sorted(labels):
-        label = labels[cid]
+        label = normalized[cid]
         if counts[label] <= 1:
             unique[cid] = label
             continue
@@ -509,7 +511,10 @@ def main() -> None:
         else:
             html_mode = "skipped"
 
-    wiki_count = to_wiki(G, communities, OUT / "wiki", community_labels=labels, cohesion=cohesion, god_nodes_data=gods)
+    wiki_dir = OUT / "wiki"
+    if wiki_dir.exists():
+        shutil.rmtree(wiki_dir)
+    wiki_count = to_wiki(G, communities, wiki_dir, community_labels=labels, cohesion=cohesion, god_nodes_data=gods)
 
     cost = {
         "runs": [{

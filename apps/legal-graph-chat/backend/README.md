@@ -25,7 +25,11 @@ uv run --python /opt/homebrew/bin/python3.11 \
 ## Contract summary
 
 - `GET /health`
+  - Optional query: `graph=legalize-kr|precedent-kr`.
+- `GET /graphs`
+  - Lists selectable graph catalog metadata without loading every graph into memory.
 - `POST /query`
+  - Optional query: `graph=legalize-kr|precedent-kr`.
 - `POST /answer`
   - Source-grounded deterministic/extractive answer scaffold.
   - `mode=llm` never calls an external provider by default; without
@@ -42,6 +46,7 @@ uv run --python /opt/homebrew/bin/python3.11 \
   - `static_layout_mode=clustered|circular|spherical` selects the static coordinate layout; default is `spherical` for a round 3D node-link graph.
 - `GET /suggested-questions`
 - `GET /source?path=...`
+  - Optional query: `graph=legalize-kr|precedent-kr`; resolves under the selected graph corpus and its `graphify-out`.
 - `GET /precedents/health`
 - `GET /precedents/search?q=...&limit=...`
 - `GET /precedents/source?path=...`

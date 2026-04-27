@@ -68,17 +68,50 @@ class GraphPaths:
     summary_path: Path
     report_path: Path
     precedent_root: Path | None = None
+    graph_key: str = "legalize-kr"
+    graph_label: str = "법령 그래프"
+    graph_description: str = "대한민국 법령 관계 그래프"
+    default_question: str = "개인정보 보호법 전자정부법 관계"
 
 
-def default_paths() -> GraphPaths:
+GRAPH_PROFILES: dict[str, dict[str, str]] = {
+    "legalize-kr": {
+        "label": "법령 그래프",
+        "description": "대한민국 법령 문서의 참조·소관·유형 관계를 탐색합니다.",
+        "default_question": "개인정보 보호법 전자정부법 관계",
+        "root_env": "LEGAL_GRAPH_SOURCE_ROOT",
+    },
+    "precedent-kr": {
+        "label": "판례 그래프",
+        "description": "대한민국 판례 문서의 판례 인용·법령 참조·법원/사건종류 관계를 탐색합니다.",
+        "default_question": "손해배상 계약 해제 대법원",
+        "root_env": "LEGAL_GRAPH_PRECEDENT_ROOT",
+    },
+}
+
+
+def supported_graph_keys() -> list[str]:
+    return list(GRAPH_PROFILES)
+
+
+def normalize_graph_key(graph_key: str | None) -> str:
+    key = (graph_key or "legalize-kr").strip()
+    if key not in GRAPH_PROFILES:
+        raise KeyError(f"unsupported graph: {key}")
+    return key
+
+
+def default_paths(graph_key: str | None = None) -> GraphPaths:
+    key = normalize_graph_key(graph_key)
+    profile = GRAPH_PROFILES[key]
     repo_root = Path(__file__).resolve().parents[4]
-    raw_source_root = os.environ.get("LEGAL_GRAPH_SOURCE_ROOT", "").strip()
+    raw_source_root = os.environ.get(profile["root_env"], "").strip()
     if raw_source_root:
         data_root = Path(raw_source_root).expanduser()
         if not data_root.is_absolute():
             data_root = (repo_root / data_root).resolve()
     else:
-        data_root = repo_root / "data" / "legalize-kr"
+        data_root = repo_root / "data" / key
     out_dir = data_root / "graphify-out"
     raw_precedent_root = os.environ.get("LEGAL_GRAPH_PRECEDENT_ROOT", "").strip()
     if not raw_precedent_root:
@@ -95,6 +128,10 @@ def default_paths() -> GraphPaths:
         summary_path=out_dir / "run-summary.json",
         report_path=out_dir / "GRAPH_REPORT.md",
         precedent_root=precedent_root,
+        graph_key=key,
+        graph_label=profile["label"],
+        graph_description=profile["description"],
+        default_question=profile["default_question"],
     )
 
 
@@ -511,14 +548,14 @@ class GraphQueryService:
             status = "ready"
             loaded = True
             ok = True
-            message = "legalize-kr graph loaded"
+            message = f"{self.paths.graph_key} {self.paths.graph_label} loaded"
         except GraphLoadError as exc:
             graph = None
             status = "error"
             loaded = False
             ok = False
             message = str(exc)
-            warnings.append("Run graphify for data/legalize-kr or restore graphify-out/graph.json.")
+            warnings.append(f"Run graphify for data/{self.paths.graph_key} or restore graphify-out/graph.json.")
 
         summary = self._raw_summary if loaded else self._read_summary_safe()
         nodes = graph.number_of_nodes() if graph else None
@@ -553,6 +590,34 @@ class GraphQueryService:
             warnings=warnings,
             message=message,
         )
+
+    def catalog_item(self) -> dict[str, Any]:
+        summary = self._raw_summary if self._raw_summary else self._read_summary_safe()
+        graph_path = self.paths.graph_path
+        exists = graph_path.exists()
+        warnings: list[str] = []
+        if not exists:
+            warnings.append("graph.json not found")
+        expected_nodes = self._int_or_none(summary.get("nodes"))
+        expected_edges = self._int_or_none(summary.get("edges"))
+        expected_communities = self._int_or_none(summary.get("communities"))
+        return {
+            "id": self.paths.graph_key,
+            "label": self.paths.graph_label,
+            "description": self.paths.graph_description,
+            "default_question": self.paths.default_question,
+            "data_root": str(self.paths.data_root),
+            "graph_path": str(graph_path),
+            "available": exists,
+            "loaded": self._graph is not None,
+            "graph_size_bytes": graph_path.stat().st_size if exists else None,
+            "generated_at": str(int(graph_path.stat().st_mtime)) if exists else None,
+            "mode": summary.get("mode"),
+            "nodes": self.graph.number_of_nodes() if self._graph is not None else expected_nodes,
+            "edges": self.graph.number_of_edges() if self._graph is not None else expected_edges,
+            "communities": self._community_count(self.graph) if self._graph is not None else expected_communities,
+            "warnings": warnings,
+        }
 
     def query(self, request: QueryRequest) -> QueryResponse:
         terms = self._tokenize(request.question)
@@ -1242,7 +1307,7 @@ class GraphQueryService:
         resolved = target.resolve()
         allowed_roots = [self.paths.data_root.resolve(), self.paths.out_dir.resolve()]
         if not any(self._is_relative_to(resolved, root) for root in allowed_roots):
-            raise PermissionError("source path escapes allowed legalize-kr roots")
+            raise PermissionError(f"source path escapes allowed {self.paths.graph_key} roots")
         content = resolved.read_text(encoding="utf-8", errors="replace")
         truncated = len(content) > max_chars
         if truncated:

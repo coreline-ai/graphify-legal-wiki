@@ -17,6 +17,7 @@ import {
   getCommunities3d,
   getExplain,
   getFullGraph3d,
+  getGraphs,
   getHealth,
   getPrecedentSource,
   getPrecedentsHealth,
@@ -34,6 +35,8 @@ import type {
   CommunityPayloadDTO,
   EdgeMode,
   EvidenceItem,
+  GraphCatalogItem,
+  GraphKey,
   GraphNodeDTO,
   GraphPayloadDTO,
   NormalizedHealth,
@@ -67,16 +70,47 @@ const WebGLGraph = lazy(() =>
 
 const DEFAULT_QUESTION = "개인정보 보호법 전자정부법 관계";
 const LEGAL_DISCLAIMER =
-  "이 UI는 법령 그래프 탐색 도구입니다. 답변은 graph.json의 노드/엣지와 source file을 기반으로 한 탐색 결과이며, 법률 자문이 아닙니다.";
+  "이 UI는 법령/판례 그래프 탐색 도구입니다. 답변은 선택된 graph.json의 노드/엣지와 source file을 기반으로 한 탐색 결과이며, 법률 자문이 아닙니다.";
+const GRAPH_PRESETS: Record<
+  GraphKey,
+  {
+    label: string;
+    shortLabel: string;
+    description: string;
+    defaultQuestion: string;
+    safeNodeLimit: number;
+    focusEdgeLimit: number;
+    allEdgeSampleLimit: number;
+    rawAllEnabled: boolean;
+  }
+> = {
+  "legalize-kr": {
+    label: "legalize-kr 법령 그래프",
+    shortLabel: "법령",
+    description: "법령 문서의 참조·소관·유형 관계",
+    defaultQuestion: DEFAULT_QUESTION,
+    safeNodeLimit: 1500,
+    focusEdgeLimit: 1500,
+    allEdgeSampleLimit: 12000,
+    rawAllEnabled: true,
+  },
+  "precedent-kr": {
+    label: "precedent-kr 판례 그래프",
+    shortLabel: "판례",
+    description: "판례 인용·법령 참조·법원/사건종류 관계",
+    defaultQuestion: "손해배상 계약 해제 대법원",
+    safeNodeLimit: 2500,
+    focusEdgeLimit: 1800,
+    allEdgeSampleLimit: 12000,
+    rawAllEnabled: false,
+  },
+};
 const DOC_LINKS = [
   { label: "GRAPH_REPORT", path: "GRAPH_REPORT.md" },
   { label: "Wiki Index", path: "wiki/index.md" },
   { label: "VERIFY", path: "VERIFY.md" },
 ] as const;
 const PRECEDENT_DEFAULT_QUERY = "손해배상 계약 해제";
-const FULL_3D_SAFE_NODE_LIMIT = 1500;
-const FULL_3D_FOCUS_EDGE_LIMIT = 1500;
-const FULL_3D_ALL_EDGE_SAMPLE_LIMIT = 12000;
 const FULL_3D_STATIC_LAYOUT_MODE: StaticLayoutMode = "spherical";
 const FULL_3D_STATIC_LAYOUT_COPY = "spherical 3D layout";
 const FULL_3D_SAFE_EDGE_MODE: EdgeMode = "all";
@@ -146,6 +180,16 @@ function compactValue(value: unknown, maxLength = 72): string {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
+function formatBytes(value: number | null | undefined): string {
+  if (!value || !Number.isFinite(value)) return "—";
+  if (value >= 1024 * 1024 * 1024)
+    return `${(value / (1024 * 1024 * 1024)).toFixed(1)}GB`;
+  if (value >= 1024 * 1024)
+    return `${(value / (1024 * 1024)).toFixed(0)}MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(0)}KB`;
+  return `${value}B`;
+}
+
 function statusChipsFrom(value: unknown, label: string): StatusChip[] {
   if (value === null || value === undefined || value === "") return [];
   if (!isRecord(value)) {
@@ -198,11 +242,20 @@ function statusChipsFrom(value: unknown, label: string): StatusChip[] {
 function statusWarningsFrom(value: unknown, label: string): string[] {
   if (!isRecord(value)) return [];
   const warnings = Array.isArray(value.warnings)
-    ? value.warnings.map(String).filter(Boolean)
+    ? value.warnings.map(displayValue).filter(Boolean)
     : [];
-  const warning = typeof value.warning === "string" ? value.warning : "";
-  const error = typeof value.error === "string" ? value.error : "";
-  const message = typeof value.message === "string" ? value.message : "";
+  const warning =
+    value.warning === undefined || value.warning === null
+      ? ""
+      : displayValue(value.warning);
+  const error =
+    value.error === undefined || value.error === null
+      ? ""
+      : displayValue(value.error);
+  const message =
+    value.message === undefined || value.message === null
+      ? ""
+      : displayValue(value.message);
   return [
     ...warnings,
     warning,
@@ -353,6 +406,10 @@ function graphQuestionForPrecedent(result: PrecedentSearchResult): string {
 }
 
 export default function App() {
+  const [activeGraphKey, setActiveGraphKey] =
+    useState<GraphKey>("legalize-kr");
+  const [graphCatalog, setGraphCatalog] = useState<GraphCatalogItem[]>([]);
+  const [graphCatalogError, setGraphCatalogError] = useState("");
   const [tab, setTab] = useState<WorkspaceTab>("chat");
   const [question, setQuestion] = useState(DEFAULT_QUESTION);
   const [health, setHealth] = useState<NormalizedHealth | null>(null);
@@ -420,9 +477,32 @@ export default function App() {
   const [isPaneResizing, setIsPaneResizing] = useState(false);
 
   useEffect(() => {
-    void refreshHealth();
+    const controller = nextController("graph-catalog");
+    setGraphCatalogError("");
+    getGraphs(controller.signal)
+      .then((catalog) => {
+        if (!isCurrentRequest("graph-catalog", controller)) return;
+        setGraphCatalog(catalog.graphs ?? []);
+      })
+      .catch((err) => {
+        if (!isCanceledError(err)) {
+          setGraphCatalogError(
+            err instanceof Error ? err.message : "그래프 목록 로딩 실패",
+          );
+        }
+      })
+      .finally(() => finishRequest("graph-catalog", controller));
+    return () => {
+      Object.values(controllers.current).forEach((controller) =>
+        controller?.abort(),
+      );
+    };
+  }, []);
+
+  useEffect(() => {
+    void refreshHealth(activeGraphKey);
     const controller = nextController("suggestions");
-    getSuggestedQuestions(controller.signal)
+    getSuggestedQuestions(controller.signal, activeGraphKey)
       .then((items) => {
         if (isCurrentRequest("suggestions", controller)) setSuggested(items);
       })
@@ -430,12 +510,7 @@ export default function App() {
         if (!isCanceledError(err)) setSuggested([]);
       })
       .finally(() => finishRequest("suggestions", controller));
-    return () => {
-      Object.values(controllers.current).forEach((controller) =>
-        controller?.abort(),
-      );
-    };
-  }, []);
+  }, [activeGraphKey]);
 
   useEffect(() => {
     latestInspectorWidthRef.current = inspectorWidth;
@@ -497,6 +572,45 @@ export default function App() {
   const activeGraph = useMemo(
     () => subgraph ?? queryResult?.graph ?? null,
     [queryResult, subgraph],
+  );
+  const activeGraphPreset = GRAPH_PRESETS[activeGraphKey];
+  const activeGraphCatalogItem = useMemo(
+    () =>
+      graphCatalog.find((item) => item.id === activeGraphKey) ?? {
+        id: activeGraphKey,
+        label: activeGraphPreset.label,
+        description: activeGraphPreset.description,
+        default_question: activeGraphPreset.defaultQuestion,
+        nodes: health?.nodes,
+        edges: health?.edges,
+        communities: health?.communities,
+      },
+    [activeGraphKey, activeGraphPreset, graphCatalog, health],
+  );
+  const graphSwitcherItems = useMemo(
+    () =>
+      (graphCatalog.length
+        ? graphCatalog
+        : (Object.entries(GRAPH_PRESETS) as [GraphKey, (typeof GRAPH_PRESETS)[GraphKey]][]).map(
+            ([id, preset]) => ({
+              id,
+              label: preset.label,
+              description: preset.description,
+              default_question: preset.defaultQuestion,
+            }),
+          )
+      ).filter((item): item is GraphCatalogItem =>
+        item.id === "legalize-kr" || item.id === "precedent-kr",
+      ),
+    [graphCatalog],
+  );
+  const fullGraphLimits = activeGraphPreset;
+  const activeDocLinks = useMemo(
+    () =>
+      activeGraphKey === "precedent-kr"
+        ? DOC_LINKS.filter((item) => item.path !== "VERIFY.md")
+        : [...DOC_LINKS],
+    [activeGraphKey],
   );
   const communityGraph = useMemo(
     () => communityToGraph(communityPayload),
@@ -598,11 +712,44 @@ export default function App() {
     return err instanceof ApiError && err.status === 499;
   }
 
-  async function refreshHealth() {
+  function resetGraphWorkspace(graphKey: GraphKey, nextQuestion?: string) {
+    Object.values(controllers.current).forEach((controller) =>
+      controller?.abort(),
+    );
+    controllers.current = {};
+    setHealth(null);
+    setHealthError("");
+    setSuggested([]);
+    setQueryResult(null);
+    setAnswerResult(null);
+    setAnswerError("");
+    setSelectedEvidence(null);
+    setSelectedCommunity(null);
+    setSelectedNodeId("");
+    setSourceText("");
+    setSourceTitle("");
+    setSubgraph(null);
+    setCommunityPayload(null);
+    setFullGraph(null);
+    setFullGraphProgress("");
+    setFullEdgeMode(FULL_3D_SAFE_EDGE_MODE);
+    setError("");
+    setLoading("");
+    setTab("chat");
+    setQuestion(nextQuestion ?? GRAPH_PRESETS[graphKey].defaultQuestion);
+  }
+
+  function selectGraph(graphKey: GraphKey) {
+    if (graphKey === activeGraphKey) return;
+    resetGraphWorkspace(graphKey);
+    setActiveGraphKey(graphKey);
+  }
+
+  async function refreshHealth(graphKey: GraphKey = activeGraphKey) {
     const controller = nextController("health");
     setHealthError("");
     try {
-      const next = await getHealth(controller.signal);
+      const next = await getHealth(controller.signal, graphKey);
       if (!isCurrentRequest("health", controller)) return;
       setHealth(next);
     } catch (err) {
@@ -613,7 +760,7 @@ export default function App() {
     }
   }
 
-  async function runQuery(nextQuestion = question) {
+  async function runQuery(nextQuestion = question, graphKey: GraphKey = activeGraphKey) {
     if (!nextQuestion.trim()) return;
     const controller = nextController("query");
     setLoading("query");
@@ -624,6 +771,7 @@ export default function App() {
       const result = await postQuery(
         { question: nextQuestion.trim(), max_nodes: 80, max_edges: 240 },
         controller.signal,
+        graphKey,
       );
       if (!isCurrentRequest("query", controller)) return;
       setQueryResult(result);
@@ -659,6 +807,7 @@ export default function App() {
           include_graph: true,
         },
         controller.signal,
+        activeGraphKey,
       );
       if (!isCurrentRequest("answer", controller)) return;
       setAnswerResult(result);
@@ -787,8 +936,12 @@ export default function App() {
 
   function convertPrecedentToGraphQuery(result: PrecedentSearchResult) {
     const nextQuestion = graphQuestionForPrecedent(result) || precedentQuery;
+    if (activeGraphKey !== "precedent-kr") {
+      resetGraphWorkspace("precedent-kr", nextQuestion);
+      setActiveGraphKey("precedent-kr");
+    }
     setQuestion(nextQuestion);
-    void runQuery(nextQuestion);
+    void runQuery(nextQuestion, "precedent-kr");
   }
 
   async function loadSourcePath(path: string, title = path) {
@@ -800,7 +953,7 @@ export default function App() {
     const controller = nextController("source");
     setLoading("source");
     try {
-      const source = await getSource(path, controller.signal);
+      const source = await getSource(path, controller.signal, activeGraphKey);
       if (!isCurrentRequest("source", controller)) return;
       setSourceTitle(source.path);
       setSourceText(source.content);
@@ -833,7 +986,11 @@ export default function App() {
     setSelectedCommunity(null);
     setError("");
     try {
-      const explanation = await getExplain({ id: node.id }, controller.signal);
+      const explanation = await getExplain(
+        { id: node.id },
+        controller.signal,
+        activeGraphKey,
+      );
       if (!isCurrentRequest("explain", controller)) return;
       setSelectedEvidence(explanation.evidence?.[0] ?? null);
       if (updateSubgraph) setSubgraph(explanation.graph ?? subgraph);
@@ -883,6 +1040,7 @@ export default function App() {
       const graph = await getSubgraph(
         { node_id: node.id, depth: 1, max_nodes: 120, max_edges: 500 },
         controller.signal,
+        activeGraphKey,
       );
       if (!isCurrentRequest("subgraph", controller)) return;
       setSubgraph(graph);
@@ -903,6 +1061,7 @@ export default function App() {
       const graph = await postSubgraph3d(
         { question: questionOverride, max_nodes: 120, max_edges: 500 },
         controller.signal,
+        activeGraphKey,
       );
       if (!isCurrentRequest("subgraph", controller)) return;
       setSubgraph(graph);
@@ -922,7 +1081,7 @@ export default function App() {
     const controller = nextController("communities");
     setLoading("communities");
     try {
-      const next = await getCommunities3d(controller.signal);
+      const next = await getCommunities3d(controller.signal, activeGraphKey);
       if (!isCurrentRequest("communities", controller)) return;
       setCommunityPayload(next);
     } catch (err) {
@@ -943,23 +1102,38 @@ export default function App() {
     return candidate;
   }
 
-  function fullGraphRequestParams(mode: EdgeMode, confirmAllEdges = false) {
+  function fullGraphRequestParams(
+    mode: EdgeMode,
+    confirmAllEdges = false,
+    allNodes = false,
+  ) {
     const staticLayoutParams = {
       static_layout: true,
       static_layout_mode: FULL_3D_STATIC_LAYOUT_MODE,
     };
+    if (allNodes) {
+      return {
+        ...staticLayoutParams,
+        edge_limit: 0,
+      };
+    }
     if (mode === "all" && confirmAllEdges) {
-      return staticLayoutParams;
+      if (fullGraphLimits.rawAllEnabled) return staticLayoutParams;
+      return {
+        ...staticLayoutParams,
+        node_limit: fullGraphLimits.safeNodeLimit,
+        edge_limit: fullGraphLimits.allEdgeSampleLimit,
+      };
     }
     return {
       ...staticLayoutParams,
-      node_limit: FULL_3D_SAFE_NODE_LIMIT,
+      node_limit: fullGraphLimits.safeNodeLimit,
       edge_limit:
         mode === "hidden"
           ? 0
           : mode === "focus"
-            ? FULL_3D_FOCUS_EDGE_LIMIT
-            : FULL_3D_ALL_EDGE_SAMPLE_LIMIT,
+            ? fullGraphLimits.focusEdgeLimit
+            : fullGraphLimits.allEdgeSampleLimit,
     };
   }
 
@@ -967,22 +1141,29 @@ export default function App() {
     mode: EdgeMode,
     focusNodeId?: string,
     confirmAllEdges = false,
+    allNodes = false,
   ): string {
+    const graphLabel = activeGraphPreset.shortLabel;
+    if (allNodes) {
+      return `${graphLabel} 전체 노드 실루엣을 요청 중입니다 · ${FULL_3D_STATIC_LAYOUT_COPY} · edges hidden · force simulation off`;
+    }
     if (mode === "hidden") {
-      return `Safe overview를 요청 중입니다 · ${FULL_3D_STATIC_LAYOUT_COPY} · top ${FULL_3D_SAFE_NODE_LIMIT.toLocaleString()} nodes · edges hidden`;
+      return `${graphLabel} safe overview를 요청 중입니다 · ${FULL_3D_STATIC_LAYOUT_COPY} · top ${fullGraphLimits.safeNodeLimit.toLocaleString()} nodes · edges hidden`;
     }
     if (mode === "focus") {
-      return `Focus edge safe mode 요청 중입니다 · ${FULL_3D_STATIC_LAYOUT_COPY} · top ${FULL_3D_SAFE_NODE_LIMIT.toLocaleString()} nodes · max ${FULL_3D_FOCUS_EDGE_LIMIT.toLocaleString()} edges${focusNodeId ? ` · focus ${focusNodeId}` : ""}`;
+      return `${graphLabel} focus edge safe mode 요청 중입니다 · ${FULL_3D_STATIC_LAYOUT_COPY} · top ${fullGraphLimits.safeNodeLimit.toLocaleString()} nodes · max ${fullGraphLimits.focusEdgeLimit.toLocaleString()} edges${focusNodeId ? ` · focus ${focusNodeId}` : ""}`;
     }
-    return confirmAllEdges
-      ? "Raw all-edge spherical 3D layout 요청 중입니다 · 9,001 nodes · 176,128 edges · force simulation off"
-      : `Connected safe overview 요청 중입니다 · ${FULL_3D_STATIC_LAYOUT_COPY} · top ${FULL_3D_SAFE_NODE_LIMIT.toLocaleString()} nodes · sampled ${FULL_3D_ALL_EDGE_SAMPLE_LIMIT.toLocaleString()} edges · force simulation off`;
+    if (confirmAllEdges && fullGraphLimits.rawAllEnabled) {
+      return `${graphLabel} raw all-edge spherical 3D layout 요청 중입니다 · force simulation off`;
+    }
+    return `${graphLabel} connected safe overview 요청 중입니다 · ${FULL_3D_STATIC_LAYOUT_COPY} · top ${fullGraphLimits.safeNodeLimit.toLocaleString()} nodes · sampled ${fullGraphLimits.allEdgeSampleLimit.toLocaleString()} edges · force simulation off`;
   }
 
   async function loadFullGraph(
     mode: EdgeMode = fullEdgeMode,
     focusNodeId?: string,
     confirmAllEdges = false,
+    allNodes = false,
   ) {
     const controller = nextController("full3d");
     const focusNode = fullGraphFocusNode(mode, focusNodeId);
@@ -990,7 +1171,7 @@ export default function App() {
     setError("");
     setTab("full3d");
     setFullGraphProgress(
-      fullGraphRequestCopy(mode, focusNode, confirmAllEdges),
+      fullGraphRequestCopy(mode, focusNode, confirmAllEdges, allNodes),
     );
     try {
       const graph = await getFullGraph3d(
@@ -998,9 +1179,10 @@ export default function App() {
           edge_mode: mode,
           focus_node_id: focusNode,
           confirm_all_edges: mode === "all" ? true : undefined,
-          ...fullGraphRequestParams(mode, confirmAllEdges),
+          ...fullGraphRequestParams(mode, confirmAllEdges, allNodes),
         },
         controller.signal,
+        activeGraphKey,
       );
       if (!isCurrentRequest("full3d", controller)) return;
       const graphWithLayout = {
@@ -1204,26 +1386,90 @@ export default function App() {
 
       <aside className="lg-sidebar" aria-label="Graph navigation">
         <header className="lg-pane-header">
-          <span>Legal Graph</span>
+          <span>Graphify Graph</span>
           <button
             type="button"
             className="lg-button"
-            onClick={() => void refreshHealth()}
+            onClick={() => void refreshHealth(activeGraphKey)}
             aria-label="그래프 상태 새로고침"
           >
             상태 확인
           </button>
         </header>
-        <HealthCard health={health} error={healthError} />
+        <section className="lg-sidebar-section lg-graph-switcher">
+          <div className="lg-section-heading-row">
+            <h2>그래프 선택</h2>
+            <span className="lg-chip" data-tone="accent">
+              {activeGraphPreset.shortLabel}
+            </span>
+          </div>
+          <div className="lg-graph-switcher__cards">
+            {graphSwitcherItems.map((item) => {
+              const preset = GRAPH_PRESETS[item.id];
+              const selected = item.id === activeGraphKey;
+              const nodes =
+                selected && health?.nodes !== null && health?.nodes !== undefined
+                  ? health.nodes
+                  : item.nodes;
+              const edges =
+                selected && health?.edges !== null && health?.edges !== undefined
+                  ? health.edges
+                  : item.edges;
+              const communities =
+                selected &&
+                health?.communities !== null &&
+                health?.communities !== undefined
+                  ? health.communities
+                  : item.communities;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="lg-graph-choice"
+                  data-active={selected}
+                  onClick={() => selectGraph(item.id)}
+                  aria-pressed={selected}
+                  aria-label={`${preset.label} 선택`}
+                >
+                  <span className="lg-graph-choice__title">
+                    {preset.label}
+                  </span>
+                  <span className="lg-graph-choice__description">
+                    {item.description || preset.description}
+                  </span>
+                  <span className="lg-graph-choice__meta">
+                    {(nodes ?? "—").toLocaleString?.() ?? nodes} nodes ·{" "}
+                    {(edges ?? "—").toLocaleString?.() ?? edges} edges ·{" "}
+                    {(communities ?? "—").toLocaleString?.() ?? communities} communities
+                  </span>
+                  <span className="lg-graph-choice__meta">
+                    {item.available === false ? "graph.json 없음" : "graph.json"} ·{" "}
+                    {formatBytes(item.graph_size_bytes)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {graphCatalogError ? (
+            <p className="lg-inline-warning">{graphCatalogError}</p>
+          ) : null}
+        </section>
+        <HealthCard
+          health={health}
+          error={healthError}
+          title={`${activeGraphKey} graph health`}
+        />
         <section className="lg-sidebar-section">
           <h2>추천 질문</h2>
           <div className="lg-chip-list">
             {(suggested.length
               ? suggested
               : [
-                  DEFAULT_QUESTION,
+                  activeGraphPreset.defaultQuestion,
                   "민법 계약 손해배상",
-                  "전자정부법 시행령 연결 구조",
+                  activeGraphKey === "precedent-kr"
+                    ? "대법원 손해배상 판례 인용"
+                    : "전자정부법 시행령 연결 구조",
                 ]
             )
               .slice(0, 6)
@@ -1250,7 +1496,7 @@ export default function App() {
         <section className="lg-sidebar-section">
           <h2>산출물 바로가기</h2>
           <div className="lg-chip-list">
-            {DOC_LINKS.map((item) => (
+            {activeDocLinks.map((item) => (
               <button
                 key={item.path}
                 type="button"
@@ -1329,10 +1575,10 @@ export default function App() {
                 <span className="lg-chip" data-tone="accent">
                   source-first
                 </span>
-                <h1>법령 그래프를 질문으로 탐색하세요</h1>
+                <h1>{activeGraphPreset.label}를 질문으로 탐색하세요</h1>
                 <p>
                   {queryResult?.summary ??
-                    "질문을 입력하면 관련 노드, 근거 source, 제한 subgraph를 함께 보여줍니다."}
+                    `${activeGraphPreset.description}를 기준으로 관련 노드, 근거 source, 제한 subgraph를 함께 보여줍니다.`}
                 </p>
                 {queryResult?.rank_reason ? (
                   <p className="lg-message-meta">
@@ -1556,8 +1802,8 @@ export default function App() {
                 className="lg-input"
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                aria-label="법령 그래프 질문"
-                placeholder="예: 개인정보 보호법과 전자정부법 관계"
+                aria-label={`${activeGraphPreset.shortLabel} 그래프 질문`}
+                placeholder={`예: ${activeGraphPreset.defaultQuestion}`}
               />
               <button
                 className="lg-button"
@@ -1964,7 +2210,7 @@ export default function App() {
             <WebGLGraph
               title="3D Subgraph"
               payload={activeGraph}
-              emptyText="질문을 입력하면 관련 법령 그래프가 여기에 표시됩니다."
+              emptyText={`질문을 입력하면 관련 ${activeGraphPreset.shortLabel} 그래프가 여기에 표시됩니다.`}
               edgeMode={edgeMode}
               onEdgeModeChange={setEdgeMode}
               selectedNodeId={selectedNodeId}
@@ -2006,6 +2252,7 @@ export default function App() {
                   <span className="lg-chip" data-tone="accent">
                     {loading === "full3d" ? "requesting" : "full graph"}
                   </span>
+                  <span className="lg-chip">{activeGraphPreset.shortLabel}</span>
                   <span className="lg-chip">edge mode {fullEdgeMode}</span>
                   <span className="lg-chip" data-tone="accent">
                     layout {fullGraph?.layout_mode || FULL_3D_STATIC_LAYOUT_MODE}
@@ -2021,7 +2268,10 @@ export default function App() {
                   {fullGraphProgress || "전체 그래프 요청을 준비 중입니다."}
                 </strong>
                 <p>
-                  Full 3D는 기본적으로 sampled edge가 포함된 spherical 3D safe overview로 시작하고, raw all-edge는 static renderer로만 요청합니다.
+                  Full 3D는 기본적으로 sampled edge가 포함된 spherical 3D safe overview로 시작합니다.
+                  {fullGraphLimits.rawAllEnabled
+                    ? " raw all-edge는 static renderer로만 요청합니다."
+                    : " 판례 그래프는 규모가 커서 raw all-edge 직접 로드를 UI에서 제한합니다."}
                   진행 중인 요청은 취소할 수 있습니다.
                 </p>
                 {loading !== "full3d" && !(fullEdgeMode === "all" && fullGraph && !fullGraph.partial) ? (
@@ -2029,9 +2279,22 @@ export default function App() {
                     className="lg-button"
                     type="button"
                     onClick={() => setShowAllEdgesWarning(true)}
-                    aria-label="Raw 176k all-edge static graph 요청 확인"
+                    aria-label={`${activeGraphPreset.shortLabel} all-edge static graph 요청 확인`}
                   >
-                    Raw 176k all-edge 로드
+                    {fullGraphLimits.rawAllEnabled
+                      ? "Raw all-edge 로드"
+                      : "Sampled all-edge 확대"}
+                  </button>
+                ) : null}
+                {activeGraphKey === "precedent-kr" && loading !== "full3d" ? (
+                  <button
+                    className="lg-button"
+                    data-variant={fullGraph?.nodes.length === 124263 ? "primary" : undefined}
+                    type="button"
+                    onClick={() => void loadFullGraph("hidden", undefined, false, true)}
+                    aria-label="판례 그래프 전체 노드를 edge 없이 로드"
+                  >
+                    전체 124k 노드만 보기
                   </button>
                 ) : null}
                 {loading === "full3d" ? (
@@ -2050,7 +2313,7 @@ export default function App() {
               fallback={<GraphWorkspaceFallback label="Full 3D Graph" />}
             >
               <WebGLGraph
-                title="Full 3D Graph opt-in"
+                title={`Full 3D Graph opt-in · ${activeGraphPreset.shortLabel}`}
                 payload={fullGraph}
                 emptyText="전체 3D 그래프는 성능 경고 확인 후 lazy-load됩니다."
                 edgeMode={fullEdgeMode}
@@ -2082,23 +2345,35 @@ export default function App() {
 
         {tab === "verify" ? (
           <section className="lg-verify-pane">
-            <HealthCard health={health} error={healthError} />
+            <HealthCard
+              health={health}
+              error={healthError}
+              title={`${activeGraphKey} graph health`}
+            />
             <div className="lg-card lg-verify-card">
               <h1>검증 기준</h1>
               <p>
-                기대값: 9,001 nodes · 176,128 edges · 12 communities. `/health`
-                결과와 VERIFY.md 기준이 일치해야 합니다.
+                선택 그래프: {activeGraphPreset.label}. 기대값:{" "}
+                {(activeGraphCatalogItem.nodes ?? health?.nodes ?? "—").toLocaleString?.() ??
+                  activeGraphCatalogItem.nodes}{" "}
+                nodes ·{" "}
+                {(activeGraphCatalogItem.edges ?? health?.edges ?? "—").toLocaleString?.() ??
+                  activeGraphCatalogItem.edges}{" "}
+                edges ·{" "}
+                {(activeGraphCatalogItem.communities ?? health?.communities ?? "—").toLocaleString?.() ??
+                  activeGraphCatalogItem.communities}{" "}
+                communities. `/health?graph={activeGraphKey}` 결과와 GRAPH_REPORT 기준이 일치해야 합니다.
               </p>
               <div className="lg-message-actions">
                 <button
                   className="lg-button"
                   type="button"
-                  onClick={() => void refreshHealth()}
+                  onClick={() => void refreshHealth(activeGraphKey)}
                   aria-label="그래프 상태 다시 확인"
                 >
                   그래프 상태 확인
                 </button>
-                {DOC_LINKS.map((item) => (
+                {activeDocLinks.map((item) => (
                   <button
                     key={item.path}
                     className="lg-button"
@@ -2304,6 +2579,7 @@ export default function App() {
             : healthError
               ? "Backend offline"
               : "Checking graph"}{" "}
+          · {activeGraphKey}{" "}
           · {health?.nodes?.toLocaleString() ?? "—"} nodes ·{" "}
           {health?.edges?.toLocaleString() ?? "—"} edges
         </span>
@@ -2314,7 +2590,7 @@ export default function App() {
 
       {showFullWarning ? (
         <WarningModal
-          title="전체 3D 그래프를 로드합니다"
+          title={`${activeGraphPreset.shortLabel} 전체 3D 그래프를 로드합니다`}
           confirmLabel="Sampled edges로 로드"
           onConfirm={() => {
             setShowFullWarning(false);
@@ -2323,28 +2599,49 @@ export default function App() {
           onCancel={() => setShowFullWarning(false)}
         >
           <p>
-            전체 그래프는 9,001개 노드와 176,128개 엣지를 가진 대형 그래프입니다.
+            선택한 {activeGraphPreset.label}는{" "}
+            {(activeGraphCatalogItem.nodes ?? health?.nodes ?? "—").toLocaleString?.() ??
+              activeGraphCatalogItem.nodes}
+            개 노드와{" "}
+            {(activeGraphCatalogItem.edges ?? health?.edges ?? "—").toLocaleString?.() ??
+              activeGraphCatalogItem.edges}
+            개 엣지를 가진 대형 그래프입니다.
             브라우저 freeze 방지를 위해 먼저 sampled edge가 포함된 spherical 3D layout의 top node safe overview로 시작합니다.
           </p>
-          <p>기본 로드는 {FULL_3D_ALL_EDGE_SAMPLE_LIMIT.toLocaleString()}개 edge sample을 연결해 보여주고, raw 176k edge는 별도 확인 후 확장합니다.</p>
+          <p>
+            기본 로드는 {fullGraphLimits.allEdgeSampleLimit.toLocaleString()}개 edge sample을 연결해 보여줍니다.
+            {fullGraphLimits.rawAllEnabled
+              ? " raw all-edge는 별도 확인 후 확장합니다."
+              : " 판례 그래프 raw all-edge는 규모상 UI에서 직접 확장하지 않습니다. 대신 Full 3D 화면에서 전체 124k 노드만 edge 없이 보는 버튼을 제공합니다."}
+          </p>
         </WarningModal>
       ) : null}
 
       {showAllEdgesWarning ? (
         <WarningModal
-          title="Raw static all-edge를 요청합니다"
-          confirmLabel="Raw 176k static 로드"
+          title={
+            fullGraphLimits.rawAllEnabled
+              ? "Raw static all-edge를 요청합니다"
+              : "Sampled all-edge safe view를 요청합니다"
+          }
+          confirmLabel={
+            fullGraphLimits.rawAllEnabled
+              ? "Raw static 로드"
+              : "Sampled all-edge 로드"
+          }
           onConfirm={() => {
             setShowAllEdgesWarning(false);
-            void loadFullGraph("all", undefined, true);
+            void loadFullGraph("all", undefined, fullGraphLimits.rawAllEnabled);
           }}
           onCancel={() => setShowAllEdgesWarning(false)}
         >
           <p>
-            Raw 176,128 edge 렌더링은 브라우저를 멈출 수 있어 기본 UX에서 제한합니다.
+            {fullGraphLimits.rawAllEnabled
+              ? "Raw all-edge 렌더링은 브라우저를 멈출 수 있어 기본 UX에서 제한합니다."
+              : "판례 그래프는 761k+ edge 규모라 raw all-edge 직접 로드를 제한하고 sampled edge payload로 렌더링합니다."}
           </p>
           <p>
-            이 작업은 backend spherical 3D x/y/z 좌표와 custom BufferGeometry renderer를 사용해 raw 176k edge를 force simulation 없이 렌더링합니다.
+            이 작업은 backend spherical 3D x/y/z 좌표와 static renderer를 사용해 force simulation 없이 렌더링합니다.
           </p>
         </WarningModal>
       ) : null}

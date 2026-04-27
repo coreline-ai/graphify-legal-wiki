@@ -6,13 +6,14 @@ Local-first GUI/API workstream for exploring `data/legalize-kr/graphify-out/grap
 
 ```text
 data/legalize-kr/graphify-out/graph.json
+data/precedent-kr/graphify-out/graph.json
         │
         ▼
 backend GraphQueryService + FastAPI
         │ slim DTOs only
         ▼
 frontend React/Vite workspace
-  Chat + Evidence + Subgraph + Community Overview + Full 3D opt-in
+  Graph selector + Chat + Evidence + Subgraph + Community Overview + Full 3D opt-in
 
 optional local corpus volume:
 data/precedent-kr/ ──► /precedents/* read-only search/source preview
@@ -105,6 +106,8 @@ export PWCLI="$CODEX_HOME/skills/playwright/scripts/playwright_cli.sh"
 
 Current graph API:
 
+- `GET /graphs`
+  - Returns selectable graph catalog entries for `legalize-kr` and `precedent-kr` without forcing the large graph JSON to load.
 - `GET /health`
 - `POST /query`
 - `GET /explain?label=...` or `GET /explain?id=...`
@@ -116,6 +119,8 @@ Current graph API:
   - `edge_mode=all` requires `confirm_all_edges=true`; otherwise backend returns the node payload with hidden edges and a warning.
 - `GET /suggested-questions`
 - `GET /source?path=...`
+
+Graph endpoints accept `graph=legalize-kr|precedent-kr`; the frontend sends this automatically from the sidebar graph selector. `/source` resolves paths under the selected graph's corpus and `graphify-out` directory.
 
 Answer and precedent follow-up API contract:
 
@@ -135,7 +140,9 @@ Answer and precedent follow-up API contract:
 ## Product and design rules
 
 - Source/evidence-first. No answer should appear as unsupported legal advice.
+- The left sidebar graph selector controls whether the workspace explores the `legalize-kr` 법령 graph or the `precedent-kr` 판례 graph.
 - Full 3D Graph is opt-in, lazy-loaded, and starts with `edge_mode=hidden`.
+- `precedent-kr` Full 3D uses bounded sampled/static payloads by default; raw all-edge direct loading is intentionally not exposed in the GUI because the graph is much larger than the 법령 graph.
 - Full 3D static coordinates support `static_layout_mode=clustered|circular|spherical`; the frontend requests `spherical` by default so the safe/raw overview reads as a round 3D node-link graph instead of a clustered slab.
 - Full 3D all-edge mode needs a second explicit confirmation before requesting `176,128` edges.
 - 3D graph panels use lazy WebGL rendering: bounded subgraphs can use `react-force-graph-3d`, while large Full 3D payloads use a static `BufferGeometry` renderer with DOM/SVG fallback and `3D / 2D / evidence` view switching.

@@ -1,6 +1,7 @@
 export type EdgeMode = 'hidden' | 'focus' | 'all';
 export type StaticLayoutMode = 'clustered' | 'circular' | 'spherical' | (string & {});
 export type WorkspaceTab = 'chat' | 'precedents' | 'subgraph' | 'communities' | 'full3d' | 'verify';
+export type GraphKey = 'legalize-kr' | 'precedent-kr';
 
 export type Confidence = 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS' | 'UNKNOWN' | string;
 export type AnswerMode = 'deterministic' | 'extractive' | 'llm' | 'disabled' | string;
@@ -42,6 +43,29 @@ export interface NormalizedHealth {
   hash?: string;
   warnings: string[];
   message?: string;
+}
+
+export interface GraphCatalogItem {
+  id: GraphKey;
+  label: string;
+  description?: string;
+  default_question?: string;
+  data_root?: string;
+  graph_path?: string;
+  available?: boolean;
+  loaded?: boolean;
+  graph_size_bytes?: number | null;
+  generated_at?: string | null;
+  mode?: string | null;
+  nodes?: number | null;
+  edges?: number | null;
+  communities?: number | null;
+  warnings?: string[];
+}
+
+export interface GraphCatalogResponse {
+  default_graph: GraphKey;
+  graphs: GraphCatalogItem[];
 }
 
 export interface QueryRequest {
