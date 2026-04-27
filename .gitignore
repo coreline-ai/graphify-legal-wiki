@@ -44,3 +44,6 @@ data/precedent-kr/
 # Local Playwright CLI artifacts
 .playwright-cli/
 .gstack/
+
+# Local output artifacts
+output/

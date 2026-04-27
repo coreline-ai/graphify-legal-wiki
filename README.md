@@ -1,463 +1,538 @@
-<p align="center">
-  <a href="https://graphifylabs.ai"><img src="https://raw.githubusercontent.com/safishamsi/graphify/v4/docs/logo-text.svg" width="260" height="64" alt="Graphify"/></a>
-</p>
+<div align="center">
 
-<p align="center">
-  🇺🇸 <a href="README.md">English</a> | 🇨🇳 <a href="docs/translations/README.zh-CN.md">简体中文</a> | 🇯🇵 <a href="docs/translations/README.ja-JP.md">日本語</a> | 🇰🇷 <a href="docs/translations/README.ko-KR.md">한국어</a> | 🇩🇪 <a href="docs/translations/README.de-DE.md">Deutsch</a> | 🇫🇷 <a href="docs/translations/README.fr-FR.md">Français</a> | 🇪🇸 <a href="docs/translations/README.es-ES.md">Español</a> | 🇮🇳 <a href="docs/translations/README.hi-IN.md">हिन्दी</a> | 🇧🇷 <a href="docs/translations/README.pt-BR.md">Português</a> | 🇷🇺 <a href="docs/translations/README.ru-RU.md">Русский</a> | 🇸🇦 <a href="docs/translations/README.ar-SA.md">العربية</a> | 🇮🇹 <a href="docs/translations/README.it-IT.md">Italiano</a> | 🇵🇱 <a href="docs/translations/README.pl-PL.md">Polski</a> | 🇳🇱 <a href="docs/translations/README.nl-NL.md">Nederlands</a> | 🇹🇷 <a href="docs/translations/README.tr-TR.md">Türkçe</a> | 🇺🇦 <a href="docs/translations/README.uk-UA.md">Українська</a> | 🇻🇳 <a href="docs/translations/README.vi-VN.md">Tiếng Việt</a> | 🇮🇩 <a href="docs/translations/README.id-ID.md">Bahasa Indonesia</a> | 🇸🇪 <a href="docs/translations/README.sv-SE.md">Svenska</a> | 🇬🇷 <a href="docs/translations/README.el-GR.md">Ελληνικά</a> | 🇷🇴 <a href="docs/translations/README.ro-RO.md">Română</a> | 🇨🇿 <a href="docs/translations/README.cs-CZ.md">Čeština</a> | 🇫🇮 <a href="docs/translations/README.fi-FI.md">Suomi</a> | 🇩🇰 <a href="docs/translations/README.da-DK.md">Dansk</a> | 🇳🇴 <a href="docs/translations/README.no-NO.md">Norsk</a> | 🇭🇺 <a href="docs/translations/README.hu-HU.md">Magyar</a> | 🇹🇭 <a href="docs/translations/README.th-TH.md">ภาษาไทย</a> | 🇹🇼 <a href="docs/translations/README.zh-TW.md">繁體中文</a>
-</p>
+# ⚖️ Graphify Legal Wiki
 
-<p align="center">
-  <a href="https://github.com/safishamsi/graphify/actions/workflows/ci.yml"><img src="https://github.com/safishamsi/graphify/actions/workflows/ci.yml/badge.svg?branch=v4" alt="CI"/></a>
-  <a href="https://pypi.org/project/graphifyy/"><img src="https://img.shields.io/pypi/v/graphifyy" alt="PyPI"/></a>
-  <a href="https://pepy.tech/project/graphifyy"><img src="https://static.pepy.tech/badge/graphifyy" alt="Downloads"/></a>
-  <a href="https://github.com/sponsors/safishamsi"><img src="https://img.shields.io/badge/sponsor-safishamsi-ea4aaa?logo=github-sponsors" alt="Sponsor"/></a>
-  <a href="https://www.linkedin.com/in/safi-shamsi"><img src="https://img.shields.io/badge/LinkedIn-Safi%20Shamsi-0077B5?logo=linkedin" alt="LinkedIn"/></a>
-</p>
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](#-시작하기)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi&logoColor=white)](#-legal-graph-chat-실행)
+[![React](https://img.shields.io/badge/React-18+-61DAFB?logo=react&logoColor=black)](#-legal-graph-chat-실행)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](#)
+[![NetworkX](https://img.shields.io/badge/NetworkX-Graph-FF6B35?logo=python&logoColor=white)](#-아키텍처)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e.svg)](./LICENSE)
+[![LLM Cost](https://img.shields.io/badge/LLM%20비용-$0-22c55e?logo=openai&logoColor=white)](#-법령-그래프-생성)
 
-<p align="center">
-  <a href="https://star-history.com/#safishamsi/graphify&Date">
-    <img src="https://api.star-history.com/svg?repos=safishamsi/graphify&type=Date" alt="Star History Chart" width="600"/>
-  </a>
-</p>
+**대한민국 법령(法令) · 판례(判例) 지식 그래프 시스템**
 
-**An AI coding assistant skill.** Type `/graphify` in Claude Code, Codex, OpenCode, Cursor, Gemini CLI, GitHub Copilot CLI, VS Code Copilot Chat, Aider, OpenClaw, Factory Droid, Trae, Hermes, Kiro, or Google Antigravity - it reads your files, builds a knowledge graph, and gives you back structure you didn't know was there. Understand a codebase faster. Find the "why" behind architectural decisions.
+5,665개 법령 · 123,558개 판례를 지식 그래프로 변환하고  
+FastAPI + React 기반 인터랙티브 채팅 인터페이스로 탐색합니다.
 
-Fully multimodal. Drop in code, PDFs, markdown, screenshots, diagrams, whiteboard photos, images in other languages, or video and audio files - graphify extracts concepts and relationships from all of it and connects them into one graph. Videos are transcribed with Whisper using a domain-aware prompt derived from your corpus. 25 languages supported via tree-sitter AST (Python, JS, TS, Go, Rust, Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Swift, Lua, Zig, PowerShell, Elixir, Objective-C, Julia, Verilog, SystemVerilog, Vue, Svelte, Dart).
+[법령 그래프](#-법령-그래프-생성) · [판례 그래프](#-판례-그래프-생성) · [Chat 앱](#-legal-graph-chat-실행) · [API](#-api-레퍼런스)
 
-> Andrej Karpathy keeps a `/raw` folder where he drops papers, tweets, screenshots, and notes. graphify is the answer to that problem - 71.5x fewer tokens per query vs reading the raw files, persistent across sessions, honest about what it found vs guessed.
+</div>
 
-```
-/graphify .                        # works on any folder - your codebase, notes, papers, anything
-```
+---
 
-```
-graphify-out/
-├── graph.html       interactive graph - open in any browser, click nodes, search, filter by community
-├── GRAPH_REPORT.md  god nodes, surprising connections, suggested questions
-├── graph.json       persistent graph - query weeks later without re-reading
-└── cache/           SHA256 cache - re-runs only process changed files
-```
-
-Add a `.graphifyignore` file to exclude folders you don't want in the graph:
-
-```
-# .graphifyignore
-vendor/
-node_modules/
-dist/
-*.generated.py
-```
-
-Same syntax as `.gitignore`. You can keep a single `.graphifyignore` at your repo root — patterns work correctly even when graphify is run on a subfolder.
-
-## What's new in v0.5.0
-
-- **`graphify clone <github-url>`** — clone any public GitHub repo and run the full pipeline on it. Clones to `~/.graphify/repos/<owner>/<repo>`, reuses existing clones on repeat runs (`git pull`). Supports `--branch` and `--out`.
-- **`graphify merge-graphs`** — combine two or more `graph.json` outputs into one cross-repo graph. Each node is tagged with its source repo. Useful for mapping dependencies across multiple projects.
-- **`CLAUDE_CONFIG_DIR` support** — `graphify install` now respects the `CLAUDE_CONFIG_DIR` environment variable when installing the Claude Code skill, instead of always writing to `~/.claude`.
-- **Shrink guard** — `to_json()` refuses to overwrite `graph.json` with a smaller graph. Prevents silent data loss when `--update` is called with a partial chunk list.
-- **`build_merge()`** — new library function for safe incremental updates: loads existing graph, merges new chunks, optionally prunes deleted-file nodes, never shrinks.
-- **Duplicate node deduplication** — `deduplicate_by_label()` collapses nodes that share a normalised label (e.g. from parallel subagents generating `achille_varzi` and `achille_varzi_c4`). Chunk-suffix contamination is also blocked at the prompt level.
-- **Bug fixes** — `graphify-out/` is now excluded from source scanning so generated artifacts never trigger false incremental refresh pressure.
-
-## How it works
-
-graphify runs in three passes. First, a deterministic AST pass extracts structure from code files (classes, functions, imports, call graphs, docstrings, rationale comments) with no LLM needed. Second, video and audio files are transcribed locally with faster-whisper using a domain-aware prompt derived from corpus god nodes — transcripts are cached so re-runs are instant. Third, Claude subagents run in parallel over docs, papers, images, and transcripts to extract concepts, relationships, and design rationale. The results are merged into a NetworkX graph, clustered with Leiden community detection, and exported as interactive HTML, queryable JSON, and a plain-language audit report.
-
-**Clustering is graph-topology-based — no embeddings.** Leiden finds communities by edge density. The semantic similarity edges that Claude extracts (`semantically_similar_to`, marked INFERRED) are already in the graph, so they influence community detection directly. The graph structure is the similarity signal — no separate embedding step or vector database needed.
-
-Every relationship is tagged `EXTRACTED` (found directly in source), `INFERRED` (reasonable inference, with a confidence score), or `AMBIGUOUS` (flagged for review). You always know what was found vs guessed.
-
-## Install
-
-**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [Cursor](https://cursor.com), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), [VS Code Copilot Chat](https://code.visualstudio.com/docs/copilot/overview), [Aider](https://aider.chat), [OpenClaw](https://openclaw.ai), [Factory Droid](https://factory.ai), [Trae](https://trae.ai), [Kiro](https://kiro.dev), Hermes, or [Google Antigravity](https://antigravity.google)
-
-```bash
-# Recommended — works on Mac and Linux with no PATH setup needed
-uv tool install graphifyy && graphify install
-# or with pipx
-pipx install graphifyy && graphify install
-# or plain pip
-pip install graphifyy && graphify install
-```
-
-> **Official package:** The PyPI package is named `graphifyy` (install with `pip install graphifyy`). Other packages named `graphify*` on PyPI are not affiliated with this project. The only official repository is [safishamsi/graphify](https://github.com/safishamsi/graphify). The CLI and skill command are still `graphify`.
-
-> **`graphify: command not found`?** Use `uv tool install graphifyy` (recommended) or `pipx install graphifyy` — both put the CLI in a managed location that's automatically on PATH. With plain `pip`, you may need to add `~/.local/bin` (Linux) or `~/Library/Python/3.x/bin` (Mac) to your PATH, or run `python -m graphify` instead. On Windows, pip scripts land in `%APPDATA%\Python\PythonXY\Scripts`.
-
-### Platform support
-
-| Platform | Install command |
-|----------|----------------|
-| Claude Code (Linux/Mac) | `graphify install` |
-| Claude Code (Windows) | `graphify install` (auto-detected) or `graphify install --platform windows` |
-| Codex | `graphify install --platform codex` |
-| OpenCode | `graphify install --platform opencode` |
-| GitHub Copilot CLI | `graphify install --platform copilot` |
-| VS Code Copilot Chat | `graphify vscode install` |
-| Aider | `graphify install --platform aider` |
-| OpenClaw | `graphify install --platform claw` |
-| Factory Droid | `graphify install --platform droid` |
-| Trae | `graphify install --platform trae` |
-| Trae CN | `graphify install --platform trae-cn` |
-| Gemini CLI | `graphify install --platform gemini` |
-| Hermes | `graphify install --platform hermes` |
-| Kiro IDE/CLI | `graphify kiro install` |
-| Cursor | `graphify cursor install` |
-| Google Antigravity | `graphify antigravity install` |
-
-Codex users also need `multi_agent = true` under `[features]` in `~/.codex/config.toml` for parallel extraction. Factory Droid uses the `Task` tool for parallel subagent dispatch. OpenClaw and Aider use sequential extraction (parallel agent support is still early on those platforms). Trae uses the Agent tool for parallel subagent dispatch and does **not** support PreToolUse hooks — AGENTS.md is the always-on mechanism. Codex supports PreToolUse hooks — `graphify codex install` installs one in `.codex/hooks.json` in addition to writing AGENTS.md.
-
-Then open your AI coding assistant and type:
-
-```
-/graphify .
-```
-
-Note: Codex uses `$` instead of `/` for skill calling, so type `$graphify .` instead.
-
-### Make your assistant always use the graph (recommended)
-
-After building a graph, run this once in your project:
-
-| Platform | Command |
-|----------|---------|
-| Claude Code | `graphify claude install` |
-| Codex | `graphify codex install` |
-| OpenCode | `graphify opencode install` |
-| GitHub Copilot CLI | `graphify copilot install` |
-| VS Code Copilot Chat | `graphify vscode install` |
-| Aider | `graphify aider install` |
-| OpenClaw | `graphify claw install` |
-| Factory Droid | `graphify droid install` |
-| Trae | `graphify trae install` |
-| Trae CN | `graphify trae-cn install` |
-| Cursor | `graphify cursor install` |
-| Gemini CLI | `graphify gemini install` |
-| Hermes | `graphify hermes install` |
-| Kiro IDE/CLI | `graphify kiro install` |
-| Google Antigravity | `graphify antigravity install` |
-
-**Claude Code** does two things: writes a `CLAUDE.md` section telling Claude to read `graphify-out/GRAPH_REPORT.md` before answering architecture questions, and installs a **PreToolUse hook** (`settings.json`) that fires before every Glob and Grep call. If a knowledge graph exists, Claude sees: _"graphify: Knowledge graph exists. Read GRAPH_REPORT.md for god nodes and community structure before searching raw files."_ — so Claude navigates via the graph instead of grepping through every file.
-
-**Codex** writes to `AGENTS.md` and also installs a **PreToolUse hook** in `.codex/hooks.json` that fires before every Bash tool call — same always-on mechanism as Claude Code.
-
-**OpenCode** writes to `AGENTS.md` and also installs a **`tool.execute.before` plugin** (`.opencode/plugins/graphify.js` + `opencode.json` registration) that fires before bash tool calls and injects the graph reminder into tool output when the graph exists.
-
-**Cursor** writes `.cursor/rules/graphify.mdc` with `alwaysApply: true` — Cursor includes it in every conversation automatically, no hook needed.
-
-**Gemini CLI** copies the skill to `~/.gemini/skills/graphify/SKILL.md`, writes a `GEMINI.md` section, and installs a `BeforeTool` hook in `.gemini/settings.json` that fires before file-read tool calls — same always-on mechanism as Claude Code.
-
-**Aider, OpenClaw, Factory Droid, Trae, and Hermes** write the same rules to `AGENTS.md` in your project root and copy the skill to the platform's global skill directory. These platforms don't support tool hooks, so AGENTS.md is the always-on mechanism.
-
-**Kiro IDE/CLI** writes the skill to `.kiro/skills/graphify/SKILL.md` (invoked via `/graphify`) and a steering file to `.kiro/steering/graphify.md` with `inclusion: always` — Kiro injects this into every conversation automatically, no hook needed.
-
-**Google Antigravity** writes `.agents/rules/graphify.md` (always-on rules) and `.agents/workflows/graphify.md` (registers `/graphify` as a slash command). No hook equivalent exists in Antigravity — rules are the always-on mechanism.
-
-**GitHub Copilot CLI** copies the skill to `~/.copilot/skills/graphify/SKILL.md`. Run `graphify copilot install` to set it up.
-
-**VS Code Copilot Chat** installs a Python-only skill (works on Windows PowerShell and macOS/Linux alike) and writes `.github/copilot-instructions.md` in your project root — VS Code reads this automatically every session, making graph context always-on without any hook mechanism. Run `graphify vscode install`. Note: this configures the chat panel in VS Code, not the Copilot CLI terminal tool.
-
-Uninstall with the matching uninstall command (e.g. `graphify claude uninstall`).
-
-**Always-on vs explicit trigger — what's the difference?**
-
-The always-on hook surfaces `GRAPH_REPORT.md` — a one-page summary of god nodes, communities, and surprising connections. Your assistant reads this before searching files, so it navigates by structure instead of keyword matching. That covers most everyday questions.
-
-`/graphify query`, `/graphify path`, and `/graphify explain` go deeper: they traverse the raw `graph.json` hop by hop, trace exact paths between nodes, and surface edge-level detail (relation type, confidence score, source location). Use them when you want a specific question answered from the graph rather than a general orientation.
-
-Think of it this way: the always-on hook gives your assistant a map. The `/graphify` commands let it navigate the map precisely.
-
-### Team workflows
-
-`graphify-out/` is designed to be committed to git so every teammate starts with a fresh map.
-
-**Recommended `.gitignore` additions:**
-```
-# keep graph outputs, skip heavy/local-only files
-graphify-out/cache/            # optional: commit for shared extraction speed, skip to keep repo small
-graphify-out/manifest.json     # mtime-based, invalid after git clone — always gitignore this
-graphify-out/cost.json         # local token tracking, not useful to share
-```
-
-**Shared setup:**
-1. One person runs `/graphify .` to build the initial graph and commits `graphify-out/`.
-2. Everyone else pulls — their assistant reads `GRAPH_REPORT.md` immediately with no extra steps.
-3. Install the post-commit hook (`graphify hook install`) so the graph rebuilds automatically after code changes — no LLM calls needed for code-only updates.
-4. For doc/paper changes, whoever edits the files runs `/graphify --update` to refresh semantic nodes.
-
-**Excluding paths** — create `.graphifyignore` in your project root (same syntax as `.gitignore`). Files matching those patterns are skipped during detection and extraction.
-
-```
-# .graphifyignore example
-AGENTS.md          # graphify install files — don't extract your own instructions as knowledge
-CLAUDE.md
-GEMINI.md
-.gemini/
-.opencode/
-docs/translations/ # generated content you don't want in the graph
-```
-
-## Using `graph.json` with an LLM
-
-`graph.json` is not meant to be pasted into a prompt all at once. The useful
-workflow is:
-
-1. Start with `graphify-out/GRAPH_REPORT.md` for the high-level overview.
-2. Use `graphify query` to pull a smaller subgraph for the specific question
-   you want to answer.
-3. Give that focused output to your assistant instead of dumping the full raw
-   corpus.
-
-For example, after running graphify on a project:
-
-```bash
-graphify query "show the auth flow" --graph graphify-out/graph.json
-graphify query "what connects DigestAuth to Response?" --graph graphify-out/graph.json
-```
-
-The output includes node labels, edge types, confidence tags, source files, and
-source locations. That makes it a good intermediate context block for an LLM:
+## 개요
 
 ```text
-Use this graph query output to answer the question. Prefer the graph structure
-over guessing, and cite the source files when possible.
+┌─────────────────────────────────────────────────────────────────┐
+│                     Korean Legal Knowledge Graph                │
+├──────────────────────┬──────────────────────────────────────────┤
+│   data/legalize-kr/  │          data/precedent-kr/              │
+│   법령 5,665 파일    │          판례 123,558 파일               │
+│   (YAML frontmatter) │          (YAML frontmatter)              │
+└──────────┬───────────┴──────────────────┬───────────────────────┘
+           │  deterministic extraction    │
+           ▼  (No LLM · $0)              ▼
+┌──────────────────────┬──────────────────────────────────────────┐
+│  graphify-out/       │  graphify-out/                           │
+│  9,001 nodes         │  124,263 nodes                           │
+│  176,128 edges       │  746,287 edges                           │
+│  12 communities      │  72 communities                          │
+└──────────┬───────────┴──────────────────┬───────────────────────┘
+           │                              │
+           ▼                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              apps/legal-graph-chat                              │
+│  FastAPI Backend (port 8765) + React/Vite Frontend (port 5173) │
+│  법령 검색 · 판례 검색 · 3D 그래프 · 커뮤니티 탐색             │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-If your assistant supports tool calling or MCP, use the graph directly instead
-of pasting text. graphify can expose `graph.json` as an MCP server:
+---
+
+## 📦 주요 기능
+
+| 기능 | 설명 |
+|------|------|
+| 🔍 **법령 지식 그래프** | 법률·시행령·시행규칙 계층구조 + `「법령명」` 참조 자동 추출 |
+| 📋 **판례 지식 그래프** | 선고법원·사건종류 분류 + 판례 간 인용 엣지 자동 추출 |
+| ⚡ **Zero LLM Cost** | YAML frontmatter 결정성 파싱 — Claude/GPT API 호출 없음 |
+| 🌐 **인터랙티브 그래프** | vis.js 기반 HTML 그래프 — 클릭·검색·커뮤니티 필터링 |
+| 💬 **Legal Graph Chat** | 법령/판례 원문 + 그래프 기반 Q&A (FastAPI + React) |
+| 🔗 **교차 참조** | 판례→법령 인용 허브 노드 (483개 법령, ≥100회 인용) |
+| 📖 **Wiki 자동 생성** | 커뮤니티별 Wikipedia 스타일 아티클 (법령 25개 · 판례 83개) |
+| 🗂️ **MCP 서버** | `graph.json` MCP 서버로 AI 어시스턴트 직접 연결 |
+
+---
+
+## 📊 데이터 현황
+
+### ⚖️ 법령 (Legalize-KR)
+
+| 항목 | 수치 |
+|------|------|
+| 입력 파일 | 5,665개 법령 `.md` |
+| 총 단어 수 | 23,519,468 |
+| 노드 | 9,001 |
+| 엣지 | 176,128 |
+| 커뮤니티 | 12개 (소관부처 기준) |
+| 참조 매칭 | 375,633개 `「법령명」` |
+| Wiki 아티클 | 25개 |
+| LLM 비용 | $0 |
+
+### 📋 판례 (Precedent-KR)
+
+| 항목 | 수치 |
+|------|------|
+| 입력 파일 | 123,558개 판례 `.md` |
+| 사건 종류 | 민사 · 형사 · 세무 · 일반행정 · 가사 · 특허 · 선거 |
+| 노드 | 124,263 |
+| 엣지 | 746,287 |
+| 커뮤니티 | 72개 (사건종류 기준) |
+| 판례→판례 인용 | 244,504개 (`선고 사건번호 판결` 패턴) |
+| 법령 참조 허브 | 483개 (≥100회 인용 법령) |
+| Wiki 아티클 | 83개 |
+| LLM 비용 | $0 |
+
+---
+
+## 🏗️ 아키텍처
+
+```text
+dev-plan/scripts/
+├── graphify_legalize_deterministic.py    # 법령 그래프 빌더
+└── graphify_precedent_deterministic.py   # 판례 그래프 빌더
+
+data/
+├── legalize-kr/
+│   ├── kr/{법령명}/{법률·시행령·시행규칙}.md   # YAML frontmatter + 본문
+│   └── graphify-out/                           # 생성된 그래프 결과물
+│       ├── graph.json    (86 MB)
+│       ├── graph.html
+│       ├── GRAPH_REPORT.md
+│       └── wiki/
+└── precedent-kr/
+    ├── {사건종류}/{법원등급}/{사건번호}.md       # YAML frontmatter + 본문
+    └── graphify-out/                           # 생성된 그래프 결과물
+        ├── graph.json    (428 MB)
+        ├── graph.html
+        ├── GRAPH_REPORT.md
+        └── wiki/
+
+apps/legal-graph-chat/
+├── backend/      # FastAPI (Python 3.11)
+├── frontend/     # React + Vite + TypeScript
+└── deploy/       # Docker + nginx
+```
+
+### 노드 종류
+
+| node_kind | 설명 | 데이터셋 |
+|-----------|------|---------|
+| `law_document` | 법령 문서 (법률·시행령·시행규칙) | 법령 |
+| `family` | 법령 패밀리 그룹 (예: 민법) | 법령 |
+| `ministry` | 소관부처 (예: 법무부) | 법령 |
+| `legal_type` | 법령구분 (법률·대통령령·부령) | 법령 |
+| `article_topic` | 공통 조문 주제 허브 | 법령 |
+| `external_law_reference` | 미매칭 외부 법령 참조 | 법령 |
+| `precedent_case` | 판례 문서 | 판례 |
+| `case_type` | 사건종류 (민사·형사·세무 등) | 판례 |
+| `court_tier` | 법원등급 (대법원·하급심) | 판례 |
+| `court` | 법원명 (서울중앙지방법원 등) | 판례 |
+| `external_law_ref` | 고빈도 법령 참조 허브 | 판례 |
+
+### 엣지 종류
+
+| relation | 방향 | 설명 |
+|----------|------|------|
+| `references` | 법령 → 법령 | `「법령명」` 명시적 인용 |
+| `implements` | 시행령 → 법률 | 같은 패밀리 계층 구조 |
+| `belongs_to_family` | 법령 → family | 법령 그룹 소속 |
+| `administered_by` | 법령 → ministry | 소관부처 연결 |
+| `cites_precedent` | 판례 → 판례 | `선고 사건번호 판결` 인용 |
+| `cites_law` | 판례 → 법령허브 | `법령명 제N조` 인용 |
+| `is_case_type` | 판례 → case_type | 사건종류 분류 |
+| `decided_by_court` | 판례 → court | 선고법원 연결 |
+
+---
+
+## 📋 사전 요구사항
 
 ```bash
-python -m graphify.serve graphify-out/graph.json
+# Python 3.11 (프로젝트 전용 venv)
+python3.11 --version
+
+# uv (패키지 관리 — 권장)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Node.js 18+ (프론트엔드)
+node --version
 ```
 
-That gives the assistant structured graph access for repeated queries such as
-`query_graph`, `get_node`, `get_neighbors`, and `shortest_path`.
+---
 
-> **WSL / Linux note:** Ubuntu ships `python3`, not `python`. Install into a project venv to avoid PEP 668 conflicts, and use the full venv path in your `.mcp.json`:
-> ```bash
-> python3 -m venv .venv && .venv/bin/pip install "graphifyy[mcp]"
-> ```
-> ```json
-> { "mcpServers": { "graphify": { "type": "stdio", "command": ".venv/bin/python3", "args": ["-m", "graphify.serve", "graphify-out/graph.json"] } } }
-> ```
-> Also note: the PyPI package is `graphifyy` (double-y) — `pip install graphify` installs an unrelated package.
-
-<details>
-<summary>Manual install (curl)</summary>
+## 🚀 시작하기
 
 ```bash
-mkdir -p ~/.claude/skills/graphify
-curl -fsSL https://raw.githubusercontent.com/safishamsi/graphify/v4/graphify/skill.md \
-  > ~/.claude/skills/graphify/SKILL.md
+# 저장소 클론
+git clone https://github.com/coreline-ai/graphify-legal-wiki.git
+cd graphify-legal-wiki
+
+# Python 의존성 설치 (전체 — 그래프 빌더 포함)
+uv sync --all-extras
+
+# 설치 확인
+.venv/bin/python -c "import graphify; print('OK')"
 ```
 
-Add to `~/.claude/CLAUDE.md`:
+---
 
-```
-- **graphify** (`~/.claude/skills/graphify/SKILL.md`) - any input to knowledge graph. Trigger: `/graphify`
-When the user types `/graphify`, invoke the Skill tool with `skill: "graphify"` before doing anything else.
-```
+## ⚡ 법령 그래프 생성
 
-</details>
-
-## Usage
-
-```
-/graphify                          # run on current directory
-/graphify ./raw                    # run on a specific folder
-/graphify ./raw --mode deep        # more aggressive INFERRED edge extraction
-/graphify ./raw --update           # re-extract only changed files, merge into existing graph
-/graphify ./raw --directed          # build directed graph (preserves edge direction: source→target)
-/graphify ./raw --cluster-only     # rerun clustering on existing graph, no re-extraction
-/graphify ./raw --no-viz           # skip HTML, just produce report + JSON
-/graphify ./raw --obsidian                          # also generate Obsidian vault (opt-in)
-/graphify ./raw --obsidian --obsidian-dir ~/vaults/myproject  # write vault to a specific directory
-
-/graphify add https://arxiv.org/abs/1706.03762        # fetch a paper, save, update graph
-/graphify add https://x.com/karpathy/status/...       # fetch a tweet
-/graphify add <video-url>                              # download audio, transcribe, add to graph
-/graphify add https://... --author "Name"             # tag the original author
-/graphify add https://... --contributor "Name"        # tag who added it to the corpus
-
-/graphify query "what connects attention to the optimizer?"
-/graphify query "what connects attention to the optimizer?" --dfs   # trace a specific path
-/graphify query "what connects attention to the optimizer?" --budget 1500  # cap at N tokens
-/graphify path "DigestAuth" "Response"
-/graphify explain "SwinTransformer"
-
-/graphify ./raw --watch            # auto-sync graph as files change (code: instant, docs: notifies you)
-/graphify ./raw --wiki             # build agent-crawlable wiki (index.md + article per community)
-/graphify ./raw --svg              # export graph.svg
-/graphify ./raw --graphml          # export graph.graphml (Gephi, yEd)
-/graphify ./raw --neo4j            # generate cypher.txt for Neo4j
-/graphify ./raw --neo4j-push bolt://localhost:7687    # push directly to a running Neo4j instance
-/graphify ./raw --mcp              # start MCP stdio server
-
-# git hooks - platform-agnostic, rebuild graph on commit and branch switch
-graphify hook install
-graphify hook uninstall
-graphify hook status
-
-# always-on assistant instructions - platform-specific
-graphify claude install            # CLAUDE.md + PreToolUse hook (Claude Code)
-graphify claude uninstall
-graphify codex install             # AGENTS.md + PreToolUse hook in .codex/hooks.json (Codex)
-graphify opencode install          # AGENTS.md + tool.execute.before plugin (OpenCode)
-graphify cursor install            # .cursor/rules/graphify.mdc (Cursor)
-graphify cursor uninstall
-graphify gemini install            # GEMINI.md + BeforeTool hook (Gemini CLI)
-graphify gemini uninstall
-graphify copilot install           # skill file (GitHub Copilot CLI)
-graphify copilot uninstall
-graphify aider install             # AGENTS.md (Aider)
-graphify aider uninstall
-graphify claw install              # AGENTS.md (OpenClaw)
-graphify droid install             # AGENTS.md (Factory Droid)
-graphify trae install              # AGENTS.md (Trae)
-graphify trae uninstall
-graphify trae-cn install           # AGENTS.md (Trae CN)
-graphify trae-cn uninstall
-graphify hermes install             # AGENTS.md + ~/.hermes/skills/ (Hermes)
-graphify hermes uninstall
-graphify kiro install               # .kiro/skills/ + .kiro/steering/graphify.md (Kiro IDE/CLI)
-graphify kiro uninstall
-graphify antigravity install       # .agents/rules + .agents/workflows (Google Antigravity)
-graphify antigravity uninstall
-
-# query and navigate the graph directly from the terminal (no AI assistant needed)
-graphify query "what connects attention to the optimizer?"
-graphify query "show the auth flow" --dfs
-graphify query "what is CfgNode?" --budget 500
-graphify query "..." --graph path/to/graph.json
-graphify path "DigestAuth" "Response"       # shortest path between two nodes
-graphify explain "SwinTransformer"           # plain-language explanation of a node
-
-# add content and update the graph from the terminal
-graphify add https://arxiv.org/abs/1706.03762          # fetch paper, save to ./raw, update graph
-graphify add https://... --author "Name" --contributor "Name"
-
-# clone any GitHub repo and run the full pipeline on it
-graphify clone https://github.com/karpathy/nanoGPT    # clones to ~/.graphify/repos/karpathy/nanoGPT
-graphify clone https://github.com/org/repo --branch dev --out ./my-clone
-
-# cross-repo graphs — merge two or more graph.json outputs into one
-graphify merge-graphs repo1/graphify-out/graph.json repo2/graphify-out/graph.json
-graphify merge-graphs g1.json g2.json g3.json --out cross-repo.json
-
-# incremental update and maintenance
-graphify watch ./src                         # auto-rebuild on code changes
-graphify check-update ./src                  # check if semantic re-extraction is pending (cron-safe)
-graphify update ./src                        # re-extract code files, no LLM needed
-graphify cluster-only ./my-project           # rerun clustering on existing graph.json
-```
-
-Works with any mix of file types:
-
-| Type | Extensions | Extraction |
-|------|-----------|------------|
-| Code | `.py .ts .js .jsx .tsx .mjs .go .rs .java .c .cpp .rb .cs .kt .scala .php .swift .lua .zig .ps1 .ex .exs .m .mm .jl .vue .svelte` | AST via tree-sitter + call-graph (cross-file for all languages) + Java extends/implements + docstring/comment rationale |
-| Docs | `.md .mdx .html .txt .rst` | Concepts + relationships + design rationale via Claude |
-| Office | `.docx .xlsx` | Converted to markdown then extracted via Claude (requires `pip install graphifyy[office]`) |
-| Papers | `.pdf` | Citation mining + concept extraction |
-| Images | `.png .jpg .webp .gif` | Claude vision - screenshots, diagrams, any language |
-| Video / Audio | `.mp4 .mov .mkv .webm .avi .m4v .mp3 .wav .m4a .ogg` | Transcribed locally with faster-whisper, transcript fed into Claude extraction (requires `pip install graphifyy[video]`) |
-| YouTube / URLs | any video URL | Audio downloaded via yt-dlp, then same Whisper pipeline (requires `pip install graphifyy[video]`) |
-
-## Video and audio corpus
-
-Drop video or audio files into your corpus folder alongside your code and docs — graphify picks them up automatically:
+`data/legalize-kr/` 폴더에 법령 데이터가 있어야 합니다.
 
 ```bash
-pip install 'graphifyy[video]'   # one-time setup
-/graphify ./my-corpus            # transcribes any video/audio files it finds
+# 법령 지식 그래프 빌드 (LLM 없음 · $0 · 약 5~10분 소요)
+.venv/bin/python dev-plan/scripts/graphify_legalize_deterministic.py
 ```
 
-Add a YouTube video (or any public video URL) directly:
+### 출력 파일
+
+```text
+data/legalize-kr/graphify-out/
+├── graph.json          # 전체 그래프 (NetworkX JSON, 86 MB)
+├── graph.html          # 인터랙티브 그래프 (브라우저에서 바로 열기)
+├── GRAPH_REPORT.md     # God nodes · 놀라운 연결 · 추천 질문
+├── run-summary.json    # 실행 통계
+├── cost.json           # 토큰 비용 (항상 $0)
+└── wiki/               # 소관부처별 Wikipedia 스타일 아티클 (25개)
+    ├── index.md
+    ├── 행정안전부_소관_법령.md
+    ├── 법무부_소관_법령.md
+    └── ...
+```
+
+### 결과 확인
 
 ```bash
-/graphify add <video-url>
+# 실행 결과 요약
+cat data/legalize-kr/graphify-out/run-summary.json
+
+# 인터랙티브 그래프 열기 (브라우저)
+open data/legalize-kr/graphify-out/graph.html
+
+# 주요 분석 리포트
+cat data/legalize-kr/graphify-out/GRAPH_REPORT.md
 ```
 
-yt-dlp downloads audio-only (fast, small), Whisper transcribes it locally, and the transcript is fed into the same extraction pipeline as your other docs. Transcripts are cached in `graphify-out/transcripts/` so re-runs skip already-transcribed files.
+### 데이터 구조 (법령)
 
-For better accuracy on technical content, use a larger model:
+```yaml
+# 예: data/legalize-kr/kr/민법/법률.md
+---
+제목: 민법
+법령MST: 284415
+법령ID: "001001"
+법령구분: 법률
+소관부처:
+  - 법무부
+공포일자: 2024-01-02
+시행일자: 2024-07-03
+상태: 시행
+출처: https://www.law.go.kr/법령/민법
+---
+
+# 제1편 총칙
+## 제1장 통칙
+### 제1조(법원) 민사에 관하여 법률에 규정이 없으면 …
+```
+
+---
+
+## ⚡ 판례 그래프 생성
+
+`data/precedent-kr/` 폴더에 판례 데이터가 있어야 합니다.
 
 ```bash
-/graphify ./my-corpus --whisper-model medium
+# 판례 지식 그래프 빌드 (LLM 없음 · $0 · 약 30~60분 소요)
+.venv/bin/python dev-plan/scripts/graphify_precedent_deterministic.py
 ```
 
-Audio never leaves your machine. All transcription runs locally.
+### 출력 파일
 
-## What you get
+```text
+data/precedent-kr/graphify-out/
+├── graph.json          # 전체 그래프 (NetworkX JSON, 428 MB)
+├── graph.html          # 인터랙티브 그래프 (aggregated 모드)
+├── GRAPH_REPORT.md     # God nodes · 판례 네트워크 분석
+├── run-summary.json    # 실행 통계
+└── wiki/               # 사건종류별 Wikipedia 스타일 아티클 (83개)
+    ├── index.md
+    ├── 민사_사건.md
+    ├── 형사_사건.md
+    ├── 세무_사건.md
+    └── ...
+```
 
-**God nodes** - highest-degree concepts (what everything connects through)
+### 데이터 구조 (판례)
 
-**Surprising connections** - ranked by composite score. Code-paper edges rank higher than code-code. Each result includes a plain-English why.
+```yaml
+# 예: data/precedent-kr/민사/하급심/2020가합3296.md
+---
+판례일련번호: '600423'
+사건번호: 2020가합3296
+사건명: 손해배상청구
+법원명: 서울중앙지방법원
+법원등급: 하급심
+사건종류: 민사
+선고일자: 2021-04-08
+출처: https://www.law.go.kr/LSW/precInfoP.do?precSeq=600423
+---
 
-**Suggested questions** - 4-5 questions the graph is uniquely positioned to answer
+# 손해배상청구
 
-**The "why"** - docstrings, inline comments (`# NOTE:`, `# IMPORTANT:`, `# HACK:`, `# WHY:`), and design rationale from docs are extracted as `rationale_for` nodes. Not just what the code does - why it was written that way.
+## 판례내용
+…
+## 참조조문
+민법 제580조, 자본시장과 금융투자업에 관한 법률 제8조 …
+```
 
-**Confidence scores** - every INFERRED edge has a `confidence_score` (0.0-1.0). You know not just what was guessed but how confident the model was. EXTRACTED edges are always 1.0.
+### 참조 추출 패턴
 
-**Semantic similarity edges** - cross-file conceptual links with no structural connection. Two functions solving the same problem without calling each other, a class in code and a concept in a paper describing the same algorithm.
+| 추출 대상 | 패턴 | 예시 |
+|----------|------|------|
+| 판례→판례 | `선고 {사건번호} 판결` | `선고 2012다65317 판결` |
+| 판례→법령 | `{법령명} 제N조` | `민법 제580조` |
 
-**Hyperedges** - group relationships connecting 3+ nodes that pairwise edges can't express. All classes implementing a shared protocol, all functions in an auth flow, all concepts from a paper section forming one idea.
+---
 
-**Token benchmark** - printed automatically after every run. On a mixed corpus (Karpathy repos + papers + images): **71.5x** fewer tokens per query vs reading raw files. The first run extracts and builds the graph (this costs tokens). Every subsequent query reads the compact graph instead of raw files — that's where the savings compound. The SHA256 cache means re-runs only re-process changed files.
+## 🖥️ Legal Graph Chat 실행
 
-**Auto-sync** (`--watch`) - run in a background terminal and the graph updates itself as your codebase changes. Code file saves trigger an instant rebuild (AST only, no LLM). Doc/image changes notify you to run `--update` for the LLM re-pass.
+법령/판례 그래프를 채팅 인터페이스로 탐색합니다.
 
-**Git hooks** (`graphify hook install`) - installs post-commit and post-checkout hooks. Graph rebuilds automatically after every commit and every branch switch. If a rebuild fails, the hook exits with a non-zero code so git surfaces the error instead of silently continuing. No background process needed.
+### 1. 환경 설정
 
-**Wiki** (`--wiki`) - Wikipedia-style markdown articles per community and god node, with an `index.md` entry point. Point any agent at `index.md` and it can navigate the knowledge base by reading files instead of parsing JSON.
+```bash
+cd apps/legal-graph-chat
 
-## Worked examples
+# 환경변수 파일 생성
+cp .env.example .env
+```
 
-| Corpus | Files | Reduction | Output |
-|--------|-------|-----------|--------|
-| Karpathy repos + 5 papers + 4 images | 52 | **71.5x** | [`worked/karpathy-repos/`](worked/karpathy-repos/) |
-| graphify source + Transformer paper | 4 | **5.4x** | [`worked/mixed-corpus/`](worked/mixed-corpus/) |
-| httpx (synthetic Python library) | 6 | ~1x | [`worked/httpx/`](worked/httpx/) |
+`.env` 파일에서 LLM 프로바이더 설정:
 
-Token reduction scales with corpus size. 6 files fits in a context window anyway, so graph value there is structural clarity, not compression. At 52 files (code + papers + images) you get 71x+. Each `worked/` folder has the raw input files and the actual output (`GRAPH_REPORT.md`, `graph.json`) so you can run it yourself and verify the numbers.
+```bash
+# 법령 그래프 경로 (기본값: data/legalize-kr)
+LEGAL_GRAPH_SOURCE_ROOT=../../data/legalize-kr
 
-## Privacy
+# 판례 코퍼스 경로 (기본값: data/precedent-kr)
+LEGAL_GRAPH_PRECEDENT_ROOT=../../data/precedent-kr
 
-graphify sends file contents to your AI coding assistant's underlying model API for semantic extraction of docs, papers, and images — Anthropic (Claude Code), OpenAI (Codex), or whichever provider your platform uses. Code files are processed locally via tree-sitter AST — no file contents leave your machine for code. Video and audio files are transcribed locally with faster-whisper — audio never leaves your machine. No telemetry, usage tracking, or analytics of any kind. The only network calls are to your platform's model API during extraction, using your own API key.
+# LLM 답변 생성 (선택)
+CORELINE_CODEX_API_KEY=your_key_here
+```
 
-## Tech stack
+### 2. 백엔드 실행
 
-NetworkX + Leiden (graspologic) + tree-sitter + vis.js. Semantic extraction via Claude (Claude Code), GPT-4 (Codex), or whichever model your platform runs. Video transcription via faster-whisper + yt-dlp (optional, `pip install graphifyy[video]`). No Neo4j required, no server, runs entirely locally.
+```bash
+cd apps/legal-graph-chat/backend
 
-## Built on graphify — Penpax
+# 의존성 설치
+pip install -r requirements.txt
 
-[**Penpax**](https://safishamsi.github.io/penpax.ai) is the enterprise layer on top of graphify. Where graphify turns a folder of files into a knowledge graph, Penpax applies the same graph to your entire working life — continuously.
+# 서버 실행 (port 8765)
+uvicorn app.main:app --host 127.0.0.1 --port 8765
+```
 
-| | graphify | Penpax |
-|---|---|---|
-| Input | A folder of files | Browser history, meetings, emails, files, code — everything |
-| Runs | On demand | Continuously in the background |
-| Scope | A project | Your entire working life |
-| Query | CLI / MCP / AI skill | Natural language, always on |
-| Privacy | Local by default | Fully on-device, no cloud |
+### 3. 프론트엔드 실행
 
-Built for lawyers, consultants, executives, doctors, researchers — anyone whose work lives across hundreds of conversations and documents they can never fully reconstruct.
+```bash
+cd apps/legal-graph-chat/frontend
 
-**Free trial launching soon.** [Join the waitlist →](https://safishamsi.github.io/penpax.ai)
+# 의존성 설치
+npm install
 
-## What we are building next
+# 개발 서버 실행 (port 5173)
+npm run dev
+```
 
-graphify is the graph layer. Penpax is the always-on layer on top of it — an on-device digital twin that connects your meetings, browser history, files, emails, and code into one continuously updating knowledge graph. No cloud, no training on your data. [Join the waitlist.](https://safishamsi.github.io/penpax.ai)
+브라우저에서 `http://localhost:5173` 접속
 
-<details>
-<summary>Contributing</summary>
+### 4. Docker로 한 번에 실행
 
-**Worked examples** are the most trust-building contribution. Run `/graphify` on a real corpus, save output to `worked/{slug}/`, write an honest `review.md` evaluating what the graph got right and wrong, submit a PR.
+```bash
+cd apps/legal-graph-chat
+docker compose -f deploy/compose.prod.yml up -d
+```
 
-**Extraction bugs** - open an issue with the input file, the cache entry (`graphify-out/cache/`), and what was missed or invented.
+---
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for module responsibilities and how to add a language.
+## ⚙️ 환경 변수
 
-</details>
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `LEGAL_GRAPH_SOURCE_ROOT` | `data/legalize-kr` | 법령 그래프 소스 경로 |
+| `LEGAL_GRAPH_PRECEDENT_ROOT` | `data/precedent-kr` | 판례 코퍼스 경로 |
+| `LEGAL_GRAPH_SOURCE_VIEWER_ENABLED` | `true` | 법령 원문 뷰어 활성화 |
+| `LEGAL_GRAPH_PRECEDENT_SOURCE_VIEWER_ENABLED` | `true` | 판례 원문 뷰어 활성화 |
+| `LEGAL_GRAPH_SOURCE_MAX_CHARS` | `40000` | 원문 조회 최대 글자 수 |
+| `LEGAL_GRAPH_AUTH_REQUIRED` | `false` | 프록시 인증 필요 여부 |
+| `CORELINE_CODEX_API_KEY` | — | LLM 답변 생성용 API 키 |
+
+---
+
+## 📖 API 레퍼런스
+
+백엔드 기본 URL: `http://127.0.0.1:8765`
+
+### 법령 그래프
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `GET` | `/health` | 그래프 로드 상태 확인 |
+| `POST` | `/query` | 키워드 기반 서브그래프 탐색 |
+| `POST` | `/answer` | LLM 기반 법령 Q&A |
+| `GET` | `/explain?label=민법` | 특정 노드 상세 설명 |
+| `GET` | `/subgraph?node_id=...` | 노드 중심 서브그래프 |
+| `GET` | `/communities/3d` | 커뮤니티 3D 데이터 |
+| `GET` | `/graph/full-3d` | 전체 그래프 3D |
+| `GET` | `/source?path=...` | 법령 원문 조회 |
+| `GET` | `/suggested-questions` | 추천 질문 목록 |
+
+### 판례
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `GET` | `/precedents/health` | 판례 코퍼스 상태 |
+| `GET` | `/precedents/search?q=손해배상` | 판례 키워드 검색 |
+| `GET` | `/precedents/search?q=...&category=민사` | 사건종류 필터 검색 |
+| `GET` | `/precedents/source?path=...` | 판례 원문 조회 |
+
+### 쿼리 예시
+
+```bash
+# 법령 검색
+curl -X POST http://127.0.0.1:8765/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "개인정보 보호법 전자정부법 관계", "max_nodes": 50}'
+
+# 판례 검색
+curl "http://127.0.0.1:8765/precedents/search?q=손해배상&category=민사&limit=10"
+
+# 법령 노드 설명
+curl "http://127.0.0.1:8765/explain?label=민법"
+```
+
+---
+
+## 📁 프로젝트 구조
+
+```text
+graphify-legal-wiki/
+├── 📂 apps/
+│   └── legal-graph-chat/
+│       ├── backend/            # FastAPI 백엔드
+│       │   ├── app/
+│       │   │   ├── main.py         # API 엔드포인트
+│       │   │   ├── service.py      # 그래프 쿼리 서비스
+│       │   │   ├── models.py       # Pydantic 모델
+│       │   │   └── precedent_index.py  # 판례 인덱스
+│       │   └── requirements.txt
+│       ├── frontend/           # React + Vite + TypeScript
+│       │   └── src/
+│       │       ├── App.tsx         # 메인 컴포넌트
+│       │       ├── api/            # API 클라이언트
+│       │       └── components/     # UI 컴포넌트
+│       └── deploy/             # Docker + nginx 배포
+├── 📂 data/
+│   ├── legalize-kr/            # 법령 데이터 + 그래프 결과
+│   └── precedent-kr/           # 판례 데이터 + 그래프 결과
+├── 📂 dev-plan/
+│   └── scripts/
+│       ├── graphify_legalize_deterministic.py   # 법령 그래프 빌더
+│       └── graphify_precedent_deterministic.py  # 판례 그래프 빌더
+├── 📂 graphify/                # 핵심 그래프 엔진
+│   ├── build.py                # NetworkX 그래프 빌드
+│   ├── cluster.py              # Leiden 커뮤니티 탐지
+│   ├── analyze.py              # God nodes · 연결 분석
+│   ├── export.py               # HTML · JSON · SVG 출력
+│   └── wiki.py                 # Wiki 아티클 생성
+├── README.md
+├── README.old.md               # 원본 graphify README
+└── pyproject.toml
+```
+
+---
+
+## 🔧 트러블슈팅
+
+**그래프 생성이 느린 경우**
+
+판례 그래프(123K 파일)는 약 30~60분이 소요됩니다.  
+진행 상황은 터미널 출력으로 확인할 수 있습니다:
+
+```
+Loading documents …
+Building precedent case nodes …
+Matching case-to-case citation edges …
+Building external law reference hubs …
+  483 law hubs created (≥100 mentions).
+Extraction done: 124,263 nodes · 746,650 edges
+```
+
+**`ModuleNotFoundError: No module named 'yaml'`**
+
+```bash
+uv sync --all-extras
+```
+
+**백엔드 포트 충돌**
+
+```bash
+# 사용 중인 포트 확인
+lsof -i :8765
+# 다른 포트로 실행
+uvicorn app.main:app --host 127.0.0.1 --port 8766
+```
+
+**graph.json 없음 오류**
+
+먼저 그래프를 생성해야 합니다:
+
+```bash
+.venv/bin/python dev-plan/scripts/graphify_legalize_deterministic.py
+# 또는
+.venv/bin/python dev-plan/scripts/graphify_precedent_deterministic.py
+```
+
+---
+
+## 🤝 기여
+
+```bash
+# 1. 저장소 포크 후 클론
+git clone https://github.com/coreline-ai/graphify-legal-wiki.git
+
+# 2. 브랜치 생성
+git checkout -b feature/your-feature
+
+# 3. 변경 후 테스트
+.venv/bin/python -m pytest tests/
+
+# 4. PR 제출
+```
+
+---
+
+## 📜 라이선스
+
+[MIT License](./LICENSE) © 2026 Coreline AI
+
+---
+
+<div align="center">
+
+**⚖️ 이 시스템의 답변은 그래프 탐색 결과이며 법률 자문이 아닙니다.**  
+**반드시 원문과 전문가 검토로 확인하세요.**
+
+</div>
