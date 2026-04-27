@@ -1,0 +1,36 @@
+# Copy to oauth2-proxy.cfg and keep the real file out of git.
+# Secrets should be injected from a secret manager or .env.production, not committed here.
+
+http_address = "0.0.0.0:4180"
+reverse_proxy = true
+set_xauthrequest = true
+pass_authorization_header = false
+pass_access_token = false
+pass_user_headers = true
+skip_provider_button = true
+
+# OIDC provider settings. The compose file also accepts OAUTH2_PROXY_* env vars.
+provider = "oidc"
+oidc_issuer_url = "https://accounts.google.com"
+client_id = "REPLACE_WITH_OIDC_CLIENT_ID"
+redirect_url = "https://legal-graph.example.com/oauth2/callback"
+email_domains = [ "example.com" ]
+scope = "openid email profile"
+
+# Required secret values are intentionally omitted from this tracked example:
+# - OAUTH2_PROXY_CLIENT_SECRET
+# - OAUTH2_PROXY_COOKIE_SECRET (32-byte base64 recommended)
+
+cookie_name = "_legal_graph_chat_oauth2"
+cookie_secure = true
+cookie_httponly = true
+cookie_samesite = "lax"
+cookie_expire = "8h"
+cookie_refresh = "1h"
+
+# nginx auth_request only needs oauth2-proxy auth endpoints, not app upstreaming.
+upstreams = [ "static://202" ]
+
+# Optional hardening: restrict by verified email or group once the provider is configured.
+# authenticated_emails_file = "/etc/oauth2-proxy/authenticated-emails.txt"
+# allowed_groups = [ "legal-graph-chat-users" ]

@@ -1,0 +1,359 @@
+/*
+  Graphify Legal Graph Chat — Obsidian-inspired design tokens
+  ---------------------------------------------------------------------------
+  Intent: ready-to-apply CSS custom properties for the upcoming chatbot GUI.
+  Scope: local product UI only. Do not use Obsidian logo, icon, or trademarks.
+*/
+
+:root {
+  color-scheme: dark;
+
+  /* Base neutral surfaces, aligned with Obsidian-like dark workspace rhythm. */
+  --lg-bg-primary: #1e1e1e;
+  --lg-bg-primary-alt: #212121;
+  --lg-bg-secondary: #242424;
+  --lg-bg-secondary-alt: #262626;
+  --lg-bg-tertiary: #2a2a2a;
+  --lg-border: #363636;
+  --lg-border-hover: #3f3f3f;
+  --lg-border-focus: rgba(var(--lg-accent-rgb), 0.62);
+
+  /* Text. */
+  --lg-text-normal: #dadada;
+  --lg-text-muted: #999999;
+  --lg-text-faint: #666666;
+  --lg-text-inverted: #1e1e1e;
+
+  /* Accent and extended colors. */
+  --lg-accent: #a882ff;
+  --lg-accent-rgb: 168, 130, 255;
+  --lg-accent-strong: #7852ee;
+  --lg-accent-strong-rgb: 120, 82, 238;
+  --lg-accent-soft: rgba(var(--lg-accent-rgb), 0.14);
+  --lg-blue: #027aff;
+  --lg-blue-rgb: 2, 122, 255;
+  --lg-cyan: #53dfdd;
+  --lg-cyan-rgb: 83, 223, 221;
+  --lg-green: #44cf6e;
+  --lg-green-rgb: 68, 207, 110;
+  --lg-yellow: #e0de71;
+  --lg-yellow-rgb: 224, 222, 113;
+  --lg-orange: #e9973f;
+  --lg-orange-rgb: 233, 151, 63;
+  --lg-red: #fb464c;
+  --lg-red-rgb: 251, 70, 76;
+  --lg-pink: #fa99cd;
+  --lg-pink-rgb: 250, 153, 205;
+
+  /* Graph community palette: 12 communities from legalize-kr run. */
+  --lg-community-0: #a882ff;
+  --lg-community-1: #53dfdd;
+  --lg-community-2: #e9973f;
+  --lg-community-3: #44cf6e;
+  --lg-community-4: #027aff;
+  --lg-community-5: #fa99cd;
+  --lg-community-6: #e0de71;
+  --lg-community-7: #fb464c;
+  --lg-community-8: #8bd5ff;
+  --lg-community-9: #b6f09c;
+  --lg-community-10: #c8a7ff;
+  --lg-community-11: #c9c9c9;
+
+  /* Spacing scale: compact desktop product density. */
+  --lg-space-1: 4px;
+  --lg-space-2: 8px;
+  --lg-space-3: 12px;
+  --lg-space-4: 16px;
+  --lg-space-5: 20px;
+  --lg-space-6: 24px;
+  --lg-space-8: 32px;
+  --lg-space-10: 40px;
+
+  /* Shape. Keep subtle; avoid bubbly SaaS over-rounding. */
+  --lg-radius-xs: 4px;
+  --lg-radius-sm: 6px;
+  --lg-radius-md: 8px;
+  --lg-radius-lg: 12px;
+  --lg-radius-xl: 16px;
+
+  /* Layout dimensions. */
+  --lg-ribbon-width: 48px;
+  --lg-left-sidebar-width: 288px;
+  --lg-right-sidebar-width: 360px;
+  --lg-tabbar-height: 36px;
+  --lg-statusbar-height: 24px;
+  --lg-command-height: 40px;
+
+  /* Typography. */
+  --lg-font-ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", "Apple SD Gothic Neo", Arial, sans-serif;
+  --lg-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --lg-font-size-xs: 11px;
+  --lg-font-size-sm: 12px;
+  --lg-font-size-md: 13px;
+  --lg-font-size-lg: 15px;
+  --lg-font-size-xl: 18px;
+  --lg-line-height-tight: 1.25;
+  --lg-line-height-normal: 1.45;
+
+  /* Motion. */
+  --lg-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --lg-duration-fast: 110ms;
+  --lg-duration-normal: 180ms;
+
+  /* Elevation: very restrained, mostly border-driven. */
+  --lg-shadow-popover: 0 18px 50px rgba(0, 0, 0, 0.36);
+  --lg-shadow-focus: 0 0 0 2px rgba(var(--lg-accent-rgb), 0.34);
+}
+
+body.legal-graph-chat {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--lg-bg-primary);
+  color: var(--lg-text-normal);
+  font-family: var(--lg-font-ui);
+  font-size: var(--lg-font-size-md);
+  line-height: var(--lg-line-height-normal);
+}
+
+.lg-app-shell {
+  display: grid;
+  grid-template-columns: var(--lg-ribbon-width) var(--lg-left-sidebar-width) minmax(0, 1fr) var(--lg-right-sidebar-width);
+  grid-template-rows: var(--lg-tabbar-height) minmax(0, 1fr) var(--lg-statusbar-height);
+  height: 100vh;
+  overflow: hidden;
+  background: var(--lg-bg-primary);
+}
+
+.lg-ribbon {
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--lg-space-2);
+  padding: var(--lg-space-2) 0;
+  background: var(--lg-bg-primary-alt);
+  border-right: 1px solid var(--lg-border);
+}
+
+.lg-sidebar,
+.lg-inspector {
+  min-width: 0;
+  background: var(--lg-bg-secondary);
+  border-color: var(--lg-border);
+}
+
+.lg-sidebar {
+  grid-row: 1 / span 2;
+  border-right: 1px solid var(--lg-border);
+}
+
+.lg-inspector {
+  grid-row: 1 / span 2;
+  border-left: 1px solid var(--lg-border);
+}
+
+.lg-tabbar {
+  display: flex;
+  align-items: end;
+  gap: 1px;
+  min-width: 0;
+  background: var(--lg-bg-primary-alt);
+  border-bottom: 1px solid var(--lg-border);
+}
+
+.lg-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  height: 30px;
+  padding: 0 var(--lg-space-3);
+  color: var(--lg-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--lg-radius-sm) var(--lg-radius-sm) 0 0;
+  cursor: default;
+}
+
+.lg-tab[data-active="true"] {
+  color: var(--lg-text-normal);
+  background: var(--lg-bg-secondary);
+  border-color: var(--lg-border);
+}
+
+.lg-main-workspace {
+  min-width: 0;
+  min-height: 0;
+  background: var(--lg-bg-primary);
+  overflow: hidden;
+}
+
+.lg-statusbar {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--lg-space-3);
+  color: var(--lg-text-faint);
+  background: var(--lg-bg-primary-alt);
+  border-top: 1px solid var(--lg-border);
+  font-size: var(--lg-font-size-xs);
+}
+
+.lg-button,
+.lg-icon-button {
+  color: var(--lg-text-muted);
+  background: var(--lg-bg-secondary-alt);
+  border: 1px solid var(--lg-border);
+  border-radius: var(--lg-radius-sm);
+  transition: background var(--lg-duration-fast) var(--lg-ease), color var(--lg-duration-fast) var(--lg-ease), border-color var(--lg-duration-fast) var(--lg-ease);
+}
+
+.lg-button:hover,
+.lg-icon-button:hover {
+  color: var(--lg-text-normal);
+  background: var(--lg-bg-tertiary);
+  border-color: var(--lg-border-hover);
+}
+
+.lg-button[data-variant="primary"] {
+  color: var(--lg-text-inverted);
+  background: var(--lg-accent);
+  border-color: var(--lg-accent);
+}
+
+.lg-button:focus-visible,
+.lg-icon-button:focus-visible,
+.lg-input:focus-visible {
+  outline: none;
+  box-shadow: var(--lg-shadow-focus);
+  border-color: var(--lg-border-focus);
+}
+
+.lg-input,
+.lg-command-input {
+  width: 100%;
+  color: var(--lg-text-normal);
+  background: var(--lg-bg-primary-alt);
+  border: 1px solid var(--lg-border);
+  border-radius: var(--lg-radius-md);
+}
+
+.lg-card {
+  background: var(--lg-bg-secondary);
+  border: 1px solid var(--lg-border);
+  border-radius: var(--lg-radius-lg);
+}
+
+.lg-evidence-card {
+  padding: var(--lg-space-3);
+  background: var(--lg-bg-secondary-alt);
+  border: 1px solid var(--lg-border);
+  border-radius: var(--lg-radius-md);
+}
+
+.lg-graph-viewport {
+  position: relative;
+  min-height: 0;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(168, 130, 255, 0.08), transparent 34%),
+    var(--lg-bg-primary);
+}
+
+.lg-graph-toolbar {
+  position: absolute;
+  top: var(--lg-space-3);
+  left: var(--lg-space-3);
+  right: var(--lg-space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lg-space-2);
+  pointer-events: none;
+}
+
+.lg-graph-toolbar > * {
+  pointer-events: auto;
+}
+
+.lg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lg-space-1);
+  min-height: 22px;
+  padding: 0 var(--lg-space-2);
+  color: var(--lg-text-muted);
+  background: var(--lg-bg-secondary-alt);
+  border: 1px solid var(--lg-border);
+  border-radius: 999px;
+  font-size: var(--lg-font-size-xs);
+}
+
+.lg-chip[data-tone="accent"] {
+  color: var(--lg-accent);
+  background: var(--lg-accent-soft);
+  border-color: rgba(var(--lg-accent-rgb), 0.32);
+}
+
+
+/* Evidence confidence states: text labels must accompany color. */
+.lg-evidence-card[data-confidence="extracted"],
+.lg-evidence-card[data-confidence="EXTRACTED"] {
+  border-color: var(--lg-border);
+}
+
+.lg-evidence-card[data-confidence="inferred"],
+.lg-evidence-card[data-confidence="INFERRED"] {
+  border-color: rgba(var(--lg-accent-rgb), 0.46);
+}
+
+.lg-evidence-card[data-confidence="ambiguous"],
+.lg-evidence-card[data-confidence="AMBIGUOUS"] {
+  border-color: var(--lg-orange);
+}
+
+.lg-state-loading,
+.lg-state-empty,
+.lg-state-error,
+.lg-state-partial,
+.lg-state-fallback {
+  padding: var(--lg-space-4);
+  color: var(--lg-text-muted);
+  background: var(--lg-bg-secondary);
+  border: 1px solid var(--lg-border);
+  border-radius: var(--lg-radius-lg);
+}
+
+.lg-state-error { border-color: var(--lg-red); color: var(--lg-red); }
+.lg-state-partial { border-color: var(--lg-yellow); }
+.lg-state-fallback { border-color: rgba(var(--lg-accent-rgb), 0.38); }
+
+.lg-full3d-warning,
+.lg-modal {
+  background: var(--lg-bg-secondary);
+  border: 1px solid var(--lg-border-focus);
+  border-radius: var(--lg-radius-xl);
+  box-shadow: var(--lg-shadow-popover);
+}
+
+@media (max-width: 1080px) {
+  .lg-app-shell {
+    grid-template-columns: var(--lg-ribbon-width) minmax(220px, 280px) minmax(0, 1fr);
+  }
+  .lg-inspector { display: none; }
+}
+
+@media (max-width: 760px) {
+  .lg-app-shell {
+    grid-template-columns: var(--lg-ribbon-width) minmax(0, 1fr);
+  }
+  .lg-sidebar { display: none; }
+  .lg-chat-composer { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}

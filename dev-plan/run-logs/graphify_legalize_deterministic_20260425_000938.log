@@ -1,0 +1,14 @@
+{
+  "mode": "deterministic_legal_reference",
+  "input_files": 5665,
+  "input_words": 23519468,
+  "nodes": 9001,
+  "edges": 176128,
+  "communities": 12,
+  "wiki_articles": 23,
+  "html_mode": "aggregated",
+  "common_topic_hubs": 50,
+  "matched_reference_edges": 375633,
+  "unmatched_reference_mentions": 26617,
+  "output_dir": "/Users/hwanchoi/projects/claude-code/graphify/data/legalize-kr/graphify-out"
+}

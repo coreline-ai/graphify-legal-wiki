@@ -1,0 +1,88 @@
+2026-04-24T14:53:29.493828Z  WARN codex_state::runtime: failed to open state db at /Users/hwanchoi/.codex/state_5.sqlite: migration 23 was previously applied but is missing in the resolved migrations
+2026-04-24T14:53:29.493992Z  WARN codex_rollout::state_db: failed to initialize state runtime at /Users/hwanchoi/.codex: migration 23 was previously applied but is missing in the resolved migrations
+2026-04-24T14:53:29.501202Z  WARN codex_state::runtime: failed to open state db at /Users/hwanchoi/.codex/state_5.sqlite: migration 23 was previously applied but is missing in the resolved migrations
+Reading additional input from stdin...
+OpenAI Codex v0.118.0 (research preview)
+--------
+workdir: /Users/hwanchoi/projects/claude-code/graphify
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /Users/hwanchoi/.codex/memories]
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019dbffb-480d-74e3-8e11-645825c4795e
+--------
+user
+/graphify data/legalize-kr --wiki
+
+The user explicitly confirmed this full data/legalize-kr run despite the large-corpus warning. Do not ask for a smaller subfolder. Use the installed graphify skill and run the pipeline. Use Codex multi-agent parallel semantic extraction if available. Record outputs under data/legalize-kr/graphify-out/.
+2026-04-24T14:53:29.528899Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back
+2026-04-24T14:53:29.530319Z  WARN codex_state::runtime: failed to open state db at /Users/hwanchoi/.codex/state_5.sqlite: migration 23 was previously applied but is missing in the resolved migrations
+2026-04-24T14:53:29.552837Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back
+2026-04-24T14:53:29.553640Z  WARN codex_state::runtime: failed to open state db at /Users/hwanchoi/.codex/state_5.sqlite: migration 23 was previously applied but is missing in the resolved migrations
+2026-04-24T14:53:29.578080Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back
+2026-04-24T14:53:29.649292Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:29.651315Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:30.511795Z  WARN codex_core::shell_snapshot: Failed to delete shell snapshot at "/Users/hwanchoi/.codex/shell_snapshots/019dbffb-480d-74e3-8e11-645825c4795e.tmp-1777042409495857000": Os { code: 2, kind: NotFound, message: "No such file or directory" }
+2026-04-24T14:53:30.619582Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:30.619941Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:30.627380Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:30.629419Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:30.637355Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:30.637788Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:30.643951Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:30.644335Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:30.649268Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:30.649581Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:30.656280Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:30.656689Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:30.664074Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:30.664458Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:30.670616Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:30.671148Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:30.677406Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:30.677739Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:31.727792Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:31.728272Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:31.732402Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:31.732708Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:31.736622Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:31.736952Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:31.741412Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:31.741736Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:31.745800Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:31.746128Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:31.750571Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:31.750958Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:31.755852Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:31.756177Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:31.760429Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:31.760777Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:31.765713Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/build-ios-apps/.codex-plugin/plugin.json
+2026-04-24T14:53:31.766070Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/hwanchoi/.codex/.tmp/plugins/plugins/plugin-eval/.codex-plugin/plugin.json
+2026-04-24T14:53:32.334601Z  WARN codex_core::codex: stream disconnected - retrying sampling request (1/5 in 198ms)...
+2026-04-24T14:53:33.465261Z  WARN codex_core::codex: stream disconnected - retrying sampling request (2/5 in 439ms)...
+ERROR: Reconnecting... 2/5
+2026-04-24T14:53:34.850518Z  WARN codex_core::codex: stream disconnected - retrying sampling request (3/5 in 855ms)...
+ERROR: Reconnecting... 3/5
+2026-04-24T14:53:37.455990Z  WARN codex_core::codex: stream disconnected - retrying sampling request (4/5 in 1.484s)...
+ERROR: Reconnecting... 4/5
+2026-04-24T14:53:39.981910Z  WARN codex_core::codex: stream disconnected - retrying sampling request (5/5 in 2.91s)...
+ERROR: Reconnecting... 5/5
+2026-04-24T14:53:43.818998Z  WARN codex_core::client: falling back to HTTP
+2026-04-24T14:53:44.962542Z  WARN codex_core::codex: stream disconnected - retrying sampling request (1/5 in 180ms)...
+ERROR: Reconnecting... 1/5
+2026-04-24T14:53:47.055903Z  WARN codex_core::codex: stream disconnected - retrying sampling request (2/5 in 382ms)...
+ERROR: Reconnecting... 2/5
+2026-04-24T14:53:48.112336Z  WARN codex_core::codex: stream disconnected - retrying sampling request (3/5 in 755ms)...
+ERROR: Reconnecting... 3/5
+2026-04-24T14:53:50.389798Z  WARN codex_core::codex: stream disconnected - retrying sampling request (4/5 in 1.476s)...
+ERROR: Reconnecting... 4/5
+2026-04-24T14:53:52.891177Z  WARN codex_core::codex: stream disconnected - retrying sampling request (5/5 in 3.519s)...
+ERROR: Reconnecting... 5/5
+ERROR: stream disconnected before completion: The model `gpt-5.5` does not exist or you do not have access to it.
+2026-04-24T14:53:57.149622Z  WARN codex_state::runtime: failed to open state db at /Users/hwanchoi/.codex/state_5.sqlite: migration 23 was previously applied but is missing in the resolved migrations
+2026-04-24T14:53:57.150835Z  WARN codex_state::runtime: failed to open state db at /Users/hwanchoi/.codex/state_5.sqlite: migration 23 was previously applied but is missing in the resolved migrations
+2026-04-24T14:53:57.173998Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back
+ERROR: stream disconnected before completion: The model `gpt-5.5` does not exist or you do not have access to it.

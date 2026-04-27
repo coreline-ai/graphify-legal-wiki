@@ -1,0 +1,213 @@
+name: legal-graph-chat
+
+services:
+  nginx:
+    image: ${LEGAL_GRAPH_NGINX_IMAGE:-nginx:1.27-alpine}
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+      - oauth2-proxy
+    ports:
+      - "${LEGAL_GRAPH_INGRESS_BIND:-0.0.0.0}:${LEGAL_GRAPH_INGRESS_PORT:-8080}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - public
+      - private
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:rw,noexec,nosuid,size=64m
+      - /var/run:rw,noexec,nosuid,size=8m
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/nginx-healthz >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    image: ${LEGAL_GRAPH_FRONTEND_IMAGE:-legal-graph-chat-frontend:prod}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://legal-graph.example.com/api}
+    restart: unless-stopped
+    expose:
+      - "8080"
+    networks:
+      - private
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:rw,noexec,nosuid,size=32m
+      - /var/run:rw,noexec,nosuid,size=8m
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  backend:
+    image: ${LEGAL_GRAPH_BACKEND_IMAGE:-legal-graph-chat-backend:prod}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    expose:
+      - "8765"
+    environment:
+      LEGAL_GRAPH_API_HOST: 0.0.0.0
+      LEGAL_GRAPH_API_PORT: "8765"
+      LEGAL_GRAPH_ALLOWED_ORIGINS: ${LEGAL_GRAPH_ALLOWED_ORIGINS:-https://legal-graph.example.com}
+      LEGAL_GRAPH_SOURCE_VIEWER_ENABLED: ${LEGAL_GRAPH_SOURCE_VIEWER_ENABLED:-true}
+      LEGAL_GRAPH_SOURCE_ROOT: /app/data/legalize-kr
+      LEGAL_GRAPH_SOURCE_MAX_CHARS: ${LEGAL_GRAPH_SOURCE_MAX_CHARS:-40000}
+      LEGAL_GRAPH_PRECEDENT_ROOT: /app/data/precedent-kr
+      LEGAL_GRAPH_PRECEDENT_SOURCE_VIEWER_ENABLED: ${LEGAL_GRAPH_PRECEDENT_SOURCE_VIEWER_ENABLED:-true}
+      LEGAL_GRAPH_PRECEDENT_SOURCE_MAX_CHARS: ${LEGAL_GRAPH_PRECEDENT_SOURCE_MAX_CHARS:-40000}
+      LEGAL_GRAPH_PRECEDENT_SEARCH_LIMIT: ${LEGAL_GRAPH_PRECEDENT_SEARCH_LIMIT:-20}
+      LEGAL_GRAPH_LLM_ENABLED: ${LEGAL_GRAPH_LLM_ENABLED:-false}
+      LEGAL_GRAPH_LLM_PROVIDER: ${LEGAL_GRAPH_LLM_PROVIDER:-coreline-codex-proxy}
+      LEGAL_GRAPH_LLM_MODEL: ${LEGAL_GRAPH_LLM_MODEL:-}
+      LEGAL_GRAPH_LLM_MAX_CONTEXT_ITEMS: ${LEGAL_GRAPH_LLM_MAX_CONTEXT_ITEMS:-24}
+      LEGAL_GRAPH_LLM_MAX_OUTPUT_TOKENS: ${LEGAL_GRAPH_LLM_MAX_OUTPUT_TOKENS:-1024}
+      LEGAL_GRAPH_INDEX_BACKEND: ${LEGAL_GRAPH_INDEX_BACKEND:-filesystem}
+      LEGAL_GRAPH_INDEX_PRELOAD: ${LEGAL_GRAPH_INDEX_PRELOAD:-true}
+      LEGAL_GRAPH_INDEX_REFRESH_SECONDS: ${LEGAL_GRAPH_INDEX_REFRESH_SECONDS:-0}
+      LEGAL_GRAPH_DATABASE_URL_FILE: /run/secrets/legal_graph_database_url
+      LEGAL_GRAPH_PGVECTOR_ENABLED: ${LEGAL_GRAPH_PGVECTOR_ENABLED:-false}
+      LEGAL_GRAPH_PGROONGA_ENABLED: ${LEGAL_GRAPH_PGROONGA_ENABLED:-false}
+      CORELINE_CODEX_PROXY_URL: ${CORELINE_CODEX_PROXY_URL:-http://coreline-codex-proxy:8787}
+      CORELINE_CODEX_PROXY_TOKEN_FILE: /run/secrets/coreline_codex_proxy_token
+    volumes:
+      - type: bind
+        source: ${LEGAL_GRAPH_LEGALIZE_CORPUS_ROOT:-../../../data/legalize-kr}
+        target: /app/data/legalize-kr
+        read_only: true
+      - type: bind
+        source: ${LEGAL_GRAPH_PRECEDENT_CORPUS_ROOT:-../../../data/precedent-kr}
+        target: /app/data/precedent-kr
+        read_only: true
+    secrets:
+      - legal_graph_database_url
+      - coreline_codex_proxy_token
+    networks:
+      - private
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=5).read()\" || exit 1"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: ${LEGAL_GRAPH_POSTGRES_IMAGE:-pgvector/pgvector:pg16}
+    restart: unless-stopped
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-legal_graph}
+      POSTGRES_USER: ${POSTGRES_USER:-legal_graph}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    secrets:
+      - postgres_password
+    networks:
+      - private
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-legal_graph} -d $${POSTGRES_DB:-legal_graph}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  oauth2-proxy:
+    image: ${OAUTH2_PROXY_IMAGE:-quay.io/oauth2-proxy/oauth2-proxy:v7.7.1}
+    restart: unless-stopped
+    command:
+      - --config=/etc/oauth2-proxy/oauth2-proxy.cfg
+    environment:
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID:-}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:-}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:-}
+      OAUTH2_PROXY_REDIRECT_URL: ${OAUTH2_PROXY_REDIRECT_URL:-https://legal-graph.example.com/oauth2/callback}
+      OAUTH2_PROXY_OIDC_ISSUER_URL: ${OAUTH2_PROXY_OIDC_ISSUER_URL:-https://accounts.google.com}
+      OAUTH2_PROXY_EMAIL_DOMAINS: ${OAUTH2_PROXY_EMAIL_DOMAINS:-example.com}
+    volumes:
+      - ./oauth2-proxy.cfg:/etc/oauth2-proxy/oauth2-proxy.cfg:ro
+    expose:
+      - "4180"
+    networks:
+      - private
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+  coreline-codex-proxy:
+    profiles:
+      - codex-proxy
+    image: ${CORELINE_CODEX_PROXY_IMAGE:-ghcr.io/example/coreline-codex-proxy:replace-me}
+    restart: unless-stopped
+    expose:
+      - "8787"
+    environment:
+      CODEX_AUTH_PATH: /var/lib/coreline-codex-auth/auth.json
+      CODEX_CONFIG_PATH: /var/lib/coreline-codex-auth/config.toml
+      CORELINE_CODEX_PROXY_TOKEN_FILE: /run/secrets/coreline_codex_proxy_token
+      CORELINE_CODEX_PROXY_ALLOW_ANY_BIND: "true"
+      CORELINE_CODEX_PROXY_MODEL: ${CORELINE_CODEX_PROXY_MODEL:-gpt-5.1-codex}
+    command:
+      - codexcode
+      - auth-proxy
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8787"
+    volumes:
+      - type: bind
+        source: ${CORELINE_CODEX_AUTH_DIR:-./secrets/coreline-codex-auth}
+        target: /var/lib/coreline-codex-auth
+        read_only: true
+    secrets:
+      - coreline_codex_proxy_token
+    networks:
+      - private
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  public:
+    driver: bridge
+  private:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres_data:
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_HOST_FILE:-./secrets/postgres_password}
+  legal_graph_database_url:
+    file: ${LEGAL_GRAPH_DATABASE_URL_HOST_FILE:-./secrets/legal_graph_database_url}
+  coreline_codex_proxy_token:
+    file: ${CORELINE_CODEX_PROXY_TOKEN_HOST_FILE:-./secrets/coreline_codex_proxy_token}

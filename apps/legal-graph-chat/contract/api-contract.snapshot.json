@@ -1,0 +1,402 @@
+{
+  "version": 1,
+  "description": "Golden API response contract for Legal Graph Chat. Tests validate required response keys and representative nested shapes for graph, answer, source, and precedent APIs against this snapshot.",
+  "models": {
+    "ApiError": {
+      "required_fields": [
+        "code",
+        "message",
+        "detail",
+        "recover_action"
+      ],
+      "example": {
+        "code": "SOURCE_FORBIDDEN",
+        "message": "source path must be relative and cannot contain '..'",
+        "detail": null,
+        "recover_action": "Only relative files under configured source corpus roots can be opened."
+      }
+    },
+    "GraphNodeDTO": {
+      "required_fields": [
+        "id",
+        "label",
+        "community",
+        "degree",
+        "type",
+        "file_type",
+        "source_file",
+        "source_url",
+        "score",
+        "size",
+        "x",
+        "y",
+        "z",
+        "is_hub",
+        "metadata"
+      ],
+      "example": {
+        "id": "law_privacy",
+        "label": "개인정보 보호법",
+        "community": 1,
+        "degree": 2,
+        "type": "document",
+        "file_type": "document",
+        "source_file": "kr/개인정보보호법/법률.md",
+        "source_url": null,
+        "score": null,
+        "size": 1.4142135623730951,
+        "is_hub": false,
+        "metadata": {},
+        "x": null,
+        "y": null,
+        "z": null
+      }
+    },
+    "GraphEdgeDTO": {
+      "required_fields": [
+        "id",
+        "source",
+        "target",
+        "relation",
+        "confidence",
+        "confidence_score",
+        "weight",
+        "source_file",
+        "metadata"
+      ],
+      "example": {
+        "id": "law_privacy->law_egov-0",
+        "source": "law_privacy",
+        "target": "law_egov",
+        "relation": "references",
+        "confidence": "EXTRACTED",
+        "confidence_score": null,
+        "weight": 3.0,
+        "source_file": "kr/개인정보보호법/법률.md",
+        "metadata": {}
+      }
+    },
+    "GraphPayloadDTO": {
+      "required_fields": [
+        "nodes",
+        "edges",
+        "seed_node_ids",
+        "focus_node_id",
+        "edge_mode",
+        "layout_mode",
+        "label",
+        "generated_at",
+        "partial",
+        "warnings"
+      ],
+      "example": {
+        "nodes": [],
+        "edges": [],
+        "seed_node_ids": [
+          "law_privacy"
+        ],
+        "focus_node_id": "law_privacy",
+        "edge_mode": "focus",
+        "layout_mode": null,
+        "label": null,
+        "generated_at": null,
+        "partial": false,
+        "warnings": []
+      }
+    },
+    "HealthResponse": {
+      "required_fields": [
+        "ok",
+        "status",
+        "loaded",
+        "graph_path",
+        "graph_version",
+        "graph_hash",
+        "graph_size_bytes",
+        "generated_at",
+        "mode",
+        "nodes",
+        "edges",
+        "communities",
+        "expected_nodes",
+        "expected_edges",
+        "expected_communities",
+        "warnings",
+        "message"
+      ],
+      "example": {
+        "ok": true,
+        "status": "ready",
+        "loaded": true,
+        "graph_path": "<absolute path to graph.json>",
+        "graph_version": null,
+        "graph_hash": "<sha256-16>",
+        "graph_size_bytes": 1000,
+        "generated_at": "<mtime epoch seconds>",
+        "mode": "test",
+        "nodes": 4,
+        "edges": 3,
+        "communities": 2,
+        "expected_nodes": 4,
+        "expected_edges": 3,
+        "expected_communities": 2,
+        "warnings": [],
+        "message": "legalize-kr graph loaded"
+      }
+    },
+    "EvidenceItem": {
+      "required_fields": [
+        "id",
+        "label",
+        "relation",
+        "confidence",
+        "source_file",
+        "source_url",
+        "community",
+        "degree",
+        "score",
+        "rationale",
+        "node_id",
+        "target"
+      ],
+      "example": {
+        "id": "evidence-law_privacy",
+        "label": "개인정보 보호법",
+        "relation": "node-source",
+        "confidence": "EXTRACTED",
+        "source_file": "kr/개인정보보호법/법률.md",
+        "source_url": null,
+        "community": 1,
+        "degree": 2,
+        "score": null,
+        "rationale": "graph node with source_file metadata",
+        "node_id": "law_privacy",
+        "target": null
+      }
+    },
+    "RankReason": {
+      "required_fields": [
+        "matched_terms",
+        "seed_nodes",
+        "hub_dampening_applied",
+        "stop_hub_threshold",
+        "max_degree"
+      ],
+      "example": {
+        "matched_terms": [
+          "민법"
+        ],
+        "seed_nodes": [],
+        "hub_dampening_applied": true,
+        "stop_hub_threshold": 80,
+        "max_degree": 2
+      }
+    },
+    "QueryResponse": {
+      "required_fields": [
+        "question",
+        "summary",
+        "evidence",
+        "graph",
+        "rank_reason",
+        "warnings"
+      ],
+      "example": {
+        "question": "민법",
+        "summary": "질문에 대한 제한 subgraph와 evidence summary",
+        "evidence": [],
+        "graph": {},
+        "rank_reason": {},
+        "warnings": []
+      }
+    },
+    "SourceResponse": {
+      "required_fields": [
+        "path",
+        "content",
+        "language",
+        "truncated",
+        "start_line",
+        "end_line"
+      ],
+      "example": {
+        "path": "kr/개인정보보호법/법률.md",
+        "content": "# 개인정보 보호법\n\n테스트 본문",
+        "language": "markdown",
+        "truncated": false,
+        "start_line": 1,
+        "end_line": 3
+      }
+    },
+    "AnswerRequest": {
+      "required_fields": [
+        "question",
+        "mode",
+        "max_nodes",
+        "max_edges",
+        "depth",
+        "max_citations"
+      ],
+      "example": {
+        "question": "민법 계약",
+        "mode": "deterministic",
+        "max_nodes": 80,
+        "max_edges": 240,
+        "depth": 1,
+        "max_citations": 5
+      }
+    },
+    "Citation": {
+      "required_fields": [
+        "id",
+        "label",
+        "source_file",
+        "source_url",
+        "node_id",
+        "target",
+        "relation",
+        "quote",
+        "rationale"
+      ],
+      "example": {
+        "id": "evidence-law_civil",
+        "label": "민법",
+        "source_file": "kr/민법/법률.md",
+        "source_url": null,
+        "node_id": "law_civil",
+        "target": null,
+        "relation": "node-source",
+        "quote": "계약과 손해배상 테스트 본문",
+        "rationale": "graph node with source_file metadata"
+      }
+    },
+    "AnswerResponse": {
+      "required_fields": [
+        "question",
+        "mode",
+        "answer",
+        "summary",
+        "citations",
+        "evidence",
+        "graph",
+        "disclaimer",
+        "provider",
+        "model",
+        "llm_status",
+        "validated_citations",
+        "warnings"
+      ],
+      "example": {
+        "question": "민법 계약",
+        "mode": "deterministic",
+        "answer": "source evidence만 사용한 deterministic answer",
+        "summary": "질문에 대한 제한 subgraph와 evidence summary",
+        "citations": [],
+        "evidence": [],
+        "graph": {},
+        "disclaimer": "graph/source evidence 탐색 결과이며 법률 자문이 아닙니다.",
+        "provider": null,
+        "model": null,
+        "llm_status": "not_requested",
+        "validated_citations": [],
+        "warnings": []
+      }
+    },
+    "PrecedentHealthResponse": {
+      "required_fields": [
+        "ok",
+        "status",
+        "root_path",
+        "exists",
+        "file_count",
+        "category_count",
+        "categories",
+        "courts",
+        "warnings",
+        "message"
+      ],
+      "example": {
+        "ok": true,
+        "status": "ready",
+        "root_path": "<absolute path to data/precedent-kr>",
+        "exists": true,
+        "file_count": 123558,
+        "category_count": 10,
+        "categories": [
+          "민사",
+          "형사"
+        ],
+        "courts": [
+          "대법원",
+          "하급심"
+        ],
+        "warnings": [],
+        "message": "precedent-kr corpus indexed from <root>"
+      }
+    },
+    "PrecedentSearchResult": {
+      "required_fields": [
+        "path",
+        "title",
+        "case_number",
+        "case_name",
+        "court_name",
+        "court_level",
+        "case_type",
+        "decision_date",
+        "category",
+        "court",
+        "source_url",
+        "score",
+        "snippet"
+      ],
+      "example": {
+        "path": "민사/대법원/2020다12345.md",
+        "title": "손해배상",
+        "case_number": "2020다12345",
+        "case_name": "손해배상",
+        "court_name": "대법원",
+        "court_level": "대법원",
+        "case_type": "민사",
+        "decision_date": "2020-01-02",
+        "category": "민사",
+        "court": "대법원",
+        "source_url": "https://example.test/precedent/1",
+        "score": 7.0,
+        "snippet": "민법상 계약 책임과 손해배상 범위를 판단한 사례입니다."
+      }
+    },
+    "PrecedentSearchResponse": {
+      "required_fields": [
+        "query",
+        "results",
+        "limit",
+        "total_considered",
+        "warnings"
+      ],
+      "example": {
+        "query": "민법",
+        "results": [],
+        "limit": 10,
+        "total_considered": 2,
+        "warnings": []
+      }
+    }
+  },
+  "endpoints": [
+    "GET /health",
+    "POST /query",
+    "POST /answer",
+    "GET /explain",
+    "GET /path",
+    "GET /subgraph",
+    "POST /subgraph/3d",
+    "GET /communities/3d",
+    "GET /graph/full-3d",
+    "GET /suggested-questions",
+    "GET /source",
+    "GET /precedents/health",
+    "GET /precedents/search?q=...",
+    "GET /precedents/source?path=..."
+  ]
+}

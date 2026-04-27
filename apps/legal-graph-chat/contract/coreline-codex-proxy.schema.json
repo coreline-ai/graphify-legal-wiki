@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://graphify.local/contracts/coreline-codex-proxy.schema.json",
+  "title": "Coreline Codex Proxy Legal Answer Contract",
+  "type": "object",
+  "required": ["schema_version", "health_response", "legal_answer_request", "legal_answer_response"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "coreline-codex-proxy.v1"
+    },
+    "health_response": {
+      "type": "object",
+      "required": ["ok", "auth_mode", "account_id_present", "model", "warnings"],
+      "additionalProperties": false,
+      "properties": {
+        "ok": { "type": "boolean" },
+        "auth_mode": { "type": ["string", "null"] },
+        "account_id_present": { "type": "boolean" },
+        "model": { "type": ["string", "null"] },
+        "rate_limit": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "primary_used_percent": { "type": ["number", "null"] },
+            "primary_reset_at": { "type": ["string", "null"] },
+            "secondary_used_percent": { "type": ["number", "null"] },
+            "secondary_reset_at": { "type": ["string", "null"] }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "legal_answer_request": {
+      "type": "object",
+      "required": ["schema_version", "question", "instructions", "context_items", "max_output_tokens"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "coreline-codex-proxy.v1" },
+        "question": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "instructions": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "context_items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 24,
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "title", "quote"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "minLength": 1, "maxLength": 120 },
+              "kind": { "type": "string", "enum": ["graph_evidence", "precedent", "source"] },
+              "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+              "source_path": { "type": ["string", "null"], "maxLength": 500 },
+              "source_url": { "type": ["string", "null"], "maxLength": 1000 },
+              "quote": { "type": "string", "minLength": 1, "maxLength": 4000 },
+              "metadata": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "max_output_tokens": { "type": "integer", "minimum": 128, "maximum": 4096 }
+      }
+    },
+    "legal_answer_response": {
+      "type": "object",
+      "required": ["schema_version", "answer", "citations", "uncertainty", "refused", "warnings"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "coreline-codex-proxy.v1" },
+        "answer": { "type": "string", "maxLength": 6000 },
+        "citations": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "required": ["source_id", "label", "quote"],
+            "additionalProperties": false,
+            "properties": {
+              "source_id": { "type": "string", "minLength": 1, "maxLength": 120 },
+              "label": { "type": "string", "minLength": 1, "maxLength": 300 },
+              "quote": { "type": "string", "minLength": 1, "maxLength": 1000 },
+              "rationale": { "type": ["string", "null"], "maxLength": 1000 }
+            }
+          }
+        },
+        "uncertainty": { "type": "string", "enum": ["low", "medium", "high"] },
+        "refused": { "type": "boolean" },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "raw_usage": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

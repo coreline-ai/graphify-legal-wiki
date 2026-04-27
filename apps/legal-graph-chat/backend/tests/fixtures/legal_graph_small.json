@@ -1,0 +1,16 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {"id": "law_privacy", "label": "개인정보 보호법", "community": 1, "file_type": "document", "source_file": "kr/개인정보보호법/법률.md"},
+    {"id": "law_egov", "label": "전자정부법", "community": 0, "file_type": "document", "source_file": "kr/전자정부법/법률.md"},
+    {"id": "law_civil", "label": "민법", "community": 1, "file_type": "document", "source_file": "kr/민법/법률.md"},
+    {"id": "hub_purpose", "label": "조문 주제: 목적", "community": 0, "file_type": "concept"}
+  ],
+  "links": [
+    {"source": "law_privacy", "target": "law_egov", "relation": "references", "confidence": "EXTRACTED", "weight": 3.0, "source_file": "kr/개인정보보호법/법률.md"},
+    {"source": "law_privacy", "target": "hub_purpose", "relation": "has_topic", "confidence": "EXTRACTED", "weight": 1.0},
+    {"source": "law_civil", "target": "hub_purpose", "relation": "has_topic", "confidence": "EXTRACTED", "weight": 1.0}
+  ]
+}
