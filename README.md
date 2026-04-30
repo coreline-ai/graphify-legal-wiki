@@ -1,4 +1,6 @@
 <div align="center">
+           
+<img width="2752" height="1536" alt="대한민국 법률 지도 서비스 안내" src="https://github.com/user-attachments/assets/22cebad1-b088-45a5-b2c9-a601c2ae945b" />
 
 # ⚖️ Graphify Legal Wiki
 
