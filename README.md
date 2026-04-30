@@ -1,6 +1,8 @@
 <div align="center">
            
-<img width="2752" height="1536" alt="대한민국 법률 지도 서비스 안내" src="https://github.com/user-attachments/assets/22cebad1-b088-45a5-b2c9-a601c2ae945b" />
+<img width="2752" height="1536" alt="대한민국 법률 지도 서비스 안내" src="https://github.com/user-attachments/assets/22cebad1-b088-45a5-b2c9-a601c2ae945b" /><br>
+
+<img width="1672" height="941" alt="ChatGPT Image 2026년 4월 30일 오후 08_18_06" src="https://github.com/user-attachments/assets/88a48bed-232c-4ccb-8aab-296f7d6edb8d" />
 
 # ⚖️ Graphify Legal Wiki
 
