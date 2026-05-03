@@ -47,7 +47,10 @@ def validate_url(url: str) -> str:
                 f"Got: {url!r}"
             )
 
-        # Resolve hostname and block private/reserved IP ranges
+        # Resolve hostname and block private/reserved IP ranges.
+        # Reject on DNS failure/timeout so a slow-loris DNS response cannot bypass the private-IP check.
+        prev_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(2.0)
         try:
             infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
             for info in infos:
@@ -58,8 +61,13 @@ def validate_url(url: str) -> str:
                         f"Blocked private/internal IP {addr} (resolved from '{hostname}'). "
                         f"Got: {url!r}"
                     )
-        except socket.gaierror:
-            pass  # DNS failure will surface later during fetch
+        except (socket.gaierror, socket.timeout) as exc:
+            raise ValueError(
+                f"Blocked URL: DNS resolution failed for '{hostname}' ({exc}). "
+                f"Got: {url!r}"
+            ) from exc
+        finally:
+            socket.setdefaulttimeout(prev_timeout)
 
     return url
 

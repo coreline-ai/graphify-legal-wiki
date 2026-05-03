@@ -31,6 +31,7 @@ from graphify.cluster import cluster, score_all
 from graphify.analyze import god_nodes, surprising_connections, suggest_questions
 from graphify.report import generate
 from graphify.export import to_json, to_html
+from graphify.normalize import normalize_text
 from graphify.wiki import to_wiki
 
 ROOT = REPO / "data" / "legalize-kr"
@@ -64,15 +65,7 @@ def stable_id(prefix: str, text: str, n: int = 12) -> str:
 
 
 def norm_title(s: str) -> str:
-    s = (s or "").strip()
-    s = s.replace("·", "ㆍ")
-    s = s.replace("\u00a0", " ")
-    s = BAD_REF_TAIL_RE.sub("", s)
-    # Strip common quoting/bracketing and markdown residue.
-    s = re.sub(r"[「」『』《》〈〉\[\]`'\"“”‘’]", "", s)
-    s = re.sub(r"<[^>]+>", "", s)
-    s = SPACE_RE.sub("", s)
-    return s
+    return normalize_text(s, strategy="title")
 
 
 def clean_topic(s: str) -> str:
@@ -546,7 +539,11 @@ def main() -> None:
         "raw_unmatched_reference_mentions": sum(unmatched_refs.values()),
         "output_dir": str(OUT),
     }
-    (OUT / "run-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Atomic write: backend reads run-summary.json, prevent partial reads.
+    summary_path = OUT / "run-summary.json"
+    summary_tmp = summary_path.with_suffix(summary_path.suffix + ".tmp")
+    summary_tmp.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(summary_tmp, summary_path)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 

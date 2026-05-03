@@ -68,9 +68,12 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
                 existing = json.loads(existing_graph.read_text(encoding="utf-8"))
                 code_ids = {n["id"] for n in existing.get("nodes", []) if n.get("file_type") == "code"}
                 sem_nodes = [n for n in existing.get("nodes", []) if n.get("file_type") != "code"]
+                # Preserve any edge that AST rebuild will not regenerate:
+                # only code↔code edges are rebuilt, so keep edges with at least one non-code endpoint.
                 sem_edges = [e for e in existing.get("links", existing.get("edges", []))
                              if e.get("confidence") in ("INFERRED", "AMBIGUOUS")
-                             or (e.get("source") not in code_ids and e.get("target") not in code_ids)]
+                             or e.get("source") not in code_ids
+                             or e.get("target") not in code_ids]
                 result = {
                     "nodes": result["nodes"] + sem_nodes,
                     "edges": result["edges"] + sem_edges,
@@ -102,7 +105,11 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
         report = generate(G, communities, cohesion, labels, gods, surprises, detection,
                           {"input": 0, "output": 0}, report_root, suggested_questions=questions)
         (out / "GRAPH_REPORT.md").write_text(report, encoding="utf-8")
-        to_json(G, communities, str(out / "graph.json"))
+        # Watch mode is the explicit "current files are truth" path. A file
+        # deletion is a legitimate graph shrink, so bypass the CLI/export
+        # guard that protects full corpus runs from accidentally overwriting a
+        # larger graph after a partial/incomplete input collection.
+        to_json(G, communities, str(out / "graph.json"), force=True)
 
         # to_html raises ValueError for graphs > MAX_NODES_FOR_VIZ (5000).
         # Wrap so core outputs (graph.json + GRAPH_REPORT.md) always land.

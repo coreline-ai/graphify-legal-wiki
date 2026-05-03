@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import struct
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -881,6 +882,37 @@ def test_auth_required_blocks_sensitive_api_without_proxy_header(fixture_client:
     assert allowed.status_code == 200
 
 
+def test_metrics_follows_auth_by_default(fixture_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    if not main_module._METRICS_ENABLED:
+        pytest.skip("prometheus_client not installed")
+    main_module.rate_limiter.reset()
+    monkeypatch.setenv("LEGAL_GRAPH_AUTH_REQUIRED", "true")
+    monkeypatch.delenv("LEGAL_GRAPH_METRICS_PUBLIC", raising=False)
+    monkeypatch.delenv("LEGAL_GRAPH_RATE_LIMIT_ENABLED", raising=False)
+
+    blocked = fixture_client.get("/metrics")
+    allowed = fixture_client.get("/metrics", headers={"X-Forwarded-User": "scraper@example.test"})
+
+    assert blocked.status_code == 401
+    assert blocked.json()["code"] == "AUTH_REQUIRED"
+    assert allowed.status_code == 200
+    assert "legal_graph_requests_total" in allowed.text
+
+
+def test_metrics_public_requires_explicit_opt_in(fixture_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    if not main_module._METRICS_ENABLED:
+        pytest.skip("prometheus_client not installed")
+    main_module.rate_limiter.reset()
+    monkeypatch.setenv("LEGAL_GRAPH_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("LEGAL_GRAPH_METRICS_PUBLIC", "true")
+    monkeypatch.delenv("LEGAL_GRAPH_RATE_LIMIT_ENABLED", raising=False)
+
+    response = fixture_client.get("/metrics")
+
+    assert response.status_code == 200
+    assert "legal_graph_requests_total" in response.text
+
+
 def test_rate_limit_blocks_repeated_answer_requests(fixture_client: TestClient, monkeypatch: pytest.MonkeyPatch):
     main_module.rate_limiter.reset()
     monkeypatch.delenv("LEGAL_GRAPH_AUTH_REQUIRED", raising=False)
@@ -911,6 +943,33 @@ def test_health_reports_malformed_graph(tmp_path: Path):
     assert health.loaded is False
     assert health.status == "error"
     assert "malformed" in (health.message or "")
+
+
+def test_health_reports_graph_write_in_progress_without_assertion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    data_root = tmp_path / "data" / "legalize-kr"
+    out_dir = data_root / "graphify-out"
+    out_dir.mkdir(parents=True)
+    graph_path = out_dir / "graph.json"
+    graph_path.write_text('{"directed": false, "multigraph": false, "graph": {}, "nodes": [], "links": []}', encoding="utf-8")
+    service = GraphQueryService(GraphPaths(tmp_path, data_root, out_dir, graph_path, out_dir / "run-summary.json", out_dir / "GRAPH_REPORT.md"))
+    real_stat = Path.stat
+    calls = 0
+
+    def fake_stat(path: Path, *args, **kwargs):
+        nonlocal calls
+        if path == graph_path:
+            calls += 1
+            return SimpleNamespace(st_mtime=123.0, st_size=100 + calls)
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+
+    health = service.health()
+
+    assert health.ok is False
+    assert health.loaded is False
+    assert health.status == "error"
+    assert "being written" in (health.message or "")
 
 
 def test_fastapi_health_uses_real_or_local_graph():

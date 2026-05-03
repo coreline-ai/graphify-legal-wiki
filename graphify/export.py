@@ -3,6 +3,7 @@ from __future__ import annotations
 import html as _html
 import json
 import math
+import os
 import re
 from collections import Counter
 from pathlib import Path
@@ -313,8 +314,14 @@ def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str, *,
             conf = link.get("confidence", "EXTRACTED")
             link["confidence_score"] = _CONFIDENCE_SCORE_DEFAULTS.get(conf, 1.0)
     data["hyperedges"] = getattr(G, "graph", {}).get("hyperedges", [])
-    with open(output_path, "w", encoding="utf-8") as f:
+    # Atomic write: serialise to a sibling .tmp file then rename. Prevents
+    # readers (e.g. the FastAPI backend on reload) from observing a partial
+    # graph.json during a long write.
+    out_path = Path(output_path)
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+    os.replace(tmp_path, out_path)
 
 
 def prune_dangling_edges(graph_data: dict) -> tuple[dict, int]:

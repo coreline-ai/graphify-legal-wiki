@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { EdgeMode, GraphEdgeDTO, GraphNodeDTO, GraphPayloadDTO } from '../api/types';
 import { communityColorHex, edgeLodLayer, graphStats, visibleEdgesForMode } from '../utils/graphLayout';
 import {
   centerStaticPositions,
   staticCameraUp,
-  staticInitialRotation,
   staticCameraPosition,
   staticEdgeOpacity,
   staticNodePointSize,
@@ -60,6 +60,8 @@ interface StaticSceneController {
 const FALLBACK_DIMENSIONS: StaticDimensions = { width: 320, height: 420 };
 const MAX_PIXEL_RATIO = 1.25;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const SVG_FALLBACK_NODE_LIMIT = 2500;
+const SVG_FALLBACK_EDGE_LIMIT = 1200;
 const DEFAULT_LAYER_BY_CODE: Record<number, StaticEdgeLayer> = {
   0: 'context',
   1: 'backbone',
@@ -143,6 +145,24 @@ function emptyEdgeBuffer(): StaticEdgeBuffer {
   };
 }
 
+function hasUsableWebGL(): boolean {
+  if (typeof document === 'undefined') return false;
+  const canvas = document.createElement('canvas');
+  try {
+    const gl = (
+      canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: true }) ||
+      canvas.getContext('webgl', { failIfMajorPerformanceCaveat: true }) ||
+      canvas.getContext('experimental-webgl', { failIfMajorPerformanceCaveat: true })
+    ) as WebGLRenderingContext | WebGL2RenderingContext | null;
+    if (!gl) return false;
+    const loseContext = gl.getExtension?.('WEBGL_lose_context');
+    loseContext?.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resolveEdgeRenderSource(payload: GraphPayloadDTO, edgeMode: EdgeMode, edgeBuffer?: StaticEdgeBuffer | null): StaticEdgeRenderSource {
   if (edgeBuffer) {
     if (edgeMode === 'hidden') {
@@ -176,6 +196,137 @@ function createNodeCircleTexture(THREE: ThreeModule) {
   return texture;
 }
 
+interface FallbackProjectedNode {
+  node: GraphNodeDTO;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+}
+
+function projectFallbackNodes(payload: GraphPayloadDTO, dimensions: StaticDimensions): FallbackProjectedNode[] {
+  const displayNodes = payload.nodes.slice(0, SVG_FALLBACK_NODE_LIMIT);
+  if (!displayNodes.length) return [];
+  const positions = displayNodes.map((node, index) => positionForNode(node, index, payload.nodes.length));
+  const xs = positions.map((position) => position.x);
+  const ys = positions.map((position) => position.z);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const width = Math.max(1, maxX - minX);
+  const height = Math.max(1, maxY - minY);
+  const padding = 28;
+  const scale = Math.min(
+    (dimensions.width - padding * 2) / width,
+    (dimensions.height - padding * 2) / height,
+  );
+  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  return displayNodes.map((node, index) => ({
+    node,
+    x: padding + (positions[index].x - minX) * safeScale,
+    y: padding + (positions[index].z - minY) * safeScale,
+    radius: node.is_hub ? 3.7 : 2.4,
+    color: communityColorHex(node.community),
+  }));
+}
+
+function fallbackEdgePairs(
+  edgeSource: StaticEdgeRenderSource,
+  projectedById: Map<string, FallbackProjectedNode>,
+  payload: GraphPayloadDTO,
+): Array<[FallbackProjectedNode, FallbackProjectedNode]> {
+  if (edgeSource.kind === 'typed') {
+    const pairs: Array<[FallbackProjectedNode, FallbackProjectedNode]> = [];
+    const count = Math.min(edgeSource.count, SVG_FALLBACK_EDGE_LIMIT);
+    for (let index = 0; index < count; index += 1) {
+      const sourceNode = payload.nodes[edgeSource.buffer.edgeSourceIndices[index]];
+      const targetNode = payload.nodes[edgeSource.buffer.edgeTargetIndices[index]];
+      if (!sourceNode || !targetNode) continue;
+      const source = projectedById.get(sourceNode.id);
+      const target = projectedById.get(targetNode.id);
+      if (source && target) pairs.push([source, target]);
+    }
+    return pairs;
+  }
+  return edgeSource.edges
+    .slice(0, SVG_FALLBACK_EDGE_LIMIT)
+    .map((edge) => [projectedById.get(edge.source), projectedById.get(edge.target)] as const)
+    .filter((pair): pair is [FallbackProjectedNode, FallbackProjectedNode] => Boolean(pair[0] && pair[1]));
+}
+
+function StaticSvgFallback({
+  title,
+  payload,
+  edgeSource,
+  dimensions,
+  selectedNodeId,
+  onSelectNode,
+  reason,
+}: {
+  title: string;
+  payload: GraphPayloadDTO;
+  edgeSource: StaticEdgeRenderSource;
+  dimensions: StaticDimensions;
+  selectedNodeId?: string;
+  onSelectNode?: (node: GraphNodeDTO) => void;
+  reason: string;
+}) {
+  const projectedNodes = useMemo(() => projectFallbackNodes(payload, dimensions), [dimensions, payload]);
+  const projectedById = useMemo(
+    () => new Map(projectedNodes.map((projected) => [projected.node.id, projected])),
+    [projectedNodes],
+  );
+  const edgePairs = useMemo(
+    () => fallbackEdgePairs(edgeSource, projectedById, payload),
+    [edgeSource, payload, projectedById],
+  );
+  const omittedNodes = Math.max(0, payload.nodes.length - projectedNodes.length);
+  const omittedEdges = Math.max(0, edgeSource.count - edgePairs.length);
+
+  return (
+    <div className="lg-static-buffer-svg-fallback" role="img" aria-label={`${title} SVG fallback`}>
+      <svg viewBox={`0 0 ${dimensions.width} ${dimensions.height}`} width="100%" height="100%" aria-hidden="true">
+        <rect width={dimensions.width} height={dimensions.height} rx="18" fill="rgba(15, 18, 28, 0.72)" />
+        <g opacity="0.28" stroke="rgba(168, 130, 255, 0.55)" strokeWidth="0.8">
+          {edgePairs.map(([source, target], index) => (
+            <line
+              key={`${source.node.id}-${target.node.id}-${index}`}
+              x1={source.x}
+              y1={source.y}
+              x2={target.x}
+              y2={target.y}
+            />
+          ))}
+        </g>
+        <g>
+          {projectedNodes.map((projected) => (
+            <circle
+              key={projected.node.id}
+              cx={projected.x}
+              cy={projected.y}
+              r={projected.node.id === selectedNodeId ? projected.radius + 2.4 : projected.radius}
+              fill={projected.color}
+              stroke={projected.node.id === selectedNodeId ? '#f4eaff' : 'rgba(255,255,255,0.38)'}
+              strokeWidth={projected.node.id === selectedNodeId ? 1.6 : 0.4}
+              onClick={() => onSelectNode?.(projected.node)}
+            />
+          ))}
+        </g>
+      </svg>
+      <div className="lg-static-buffer-fallback-copy">
+        <strong>WebGL을 사용할 수 없어 SVG fallback으로 표시합니다.</strong>
+        <span>{reason}</span>
+        <span>
+          {projectedNodes.length.toLocaleString()} / {payload.nodes.length.toLocaleString()} nodes ·{" "}
+          {edgePairs.length.toLocaleString()} / {edgeSource.count.toLocaleString()} edges rendered
+          {omittedNodes || omittedEdges ? " · browser safety cap applied" : ""}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function StaticBufferGraph({ title, payload, edgeMode, edgeBuffer, selectedNodeId, onSelectNode, edgeStrength = 1 }: StaticBufferGraphProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sceneControllerRef = useRef<StaticSceneController | null>(null);
@@ -183,6 +334,7 @@ export function StaticBufferGraph({ title, payload, edgeMode, edgeBuffer, select
   const onSelectNodeRef = useRef<typeof onSelectNode>(onSelectNode);
   const [dimensions, setDimensions] = useState<StaticDimensions | null>(null);
   const [status, setStatus] = useState('static renderer 영역 측정 중…');
+  const [fallbackReason, setFallbackReason] = useState<string | null>(null);
   const edgeRenderSource = useMemo(
     () => resolveEdgeRenderSource(payload, edgeMode, edgeBuffer),
     [edgeBuffer, edgeMode, payload],
@@ -251,12 +403,29 @@ export function StaticBufferGraph({ title, payload, edgeMode, edgeBuffer, select
     let cancelled = false;
     let controller: StaticSceneController | null = null;
     setStatus('Three.js static buffer renderer 로딩 중…');
+    setFallbackReason(null);
+
+    if (!hasUsableWebGL()) {
+      const reason = '이 브라우저/하드웨어에서 WebGL context 생성이 실패했습니다.';
+      sceneControllerRef.current?.dispose();
+      sceneControllerRef.current = null;
+      setFallbackReason(reason);
+      setStatus(`SVG fallback · ${reason}`);
+      return;
+    }
 
     import('three')
       .then((THREE) => {
         if (cancelled) return;
-        controller = mountStaticScene(THREE, container, payload, edgeRenderSource, dimensions, setStatus, selectedNodeIdRef.current, handleSceneNodeSelect, edgeStrength);
-        sceneControllerRef.current = controller;
+        try {
+          controller = mountStaticScene(THREE, container, payload, edgeRenderSource, dimensions, setStatus, selectedNodeIdRef.current, handleSceneNodeSelect, edgeStrength);
+          sceneControllerRef.current = controller;
+        } catch (err: unknown) {
+          const reason = err instanceof Error ? err.message : 'static renderer load failed';
+          sceneControllerRef.current = null;
+          setFallbackReason(reason);
+          setStatus(`SVG fallback · ${reason}`);
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -272,9 +441,22 @@ export function StaticBufferGraph({ title, payload, edgeMode, edgeBuffer, select
 
   return (
     <div className="lg-static-buffer-graph" aria-label={`${title} static renderer`}>
-      <div ref={containerRef} className="lg-static-buffer-canvas" />
+      <div ref={containerRef} className="lg-static-buffer-canvas">
+        {fallbackReason && dimensions ? (
+          <StaticSvgFallback
+            title={title}
+            payload={payload}
+            edgeSource={edgeRenderSource}
+            dimensions={dimensions}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={onSelectNode}
+            reason={fallbackReason}
+          />
+        ) : null}
+      </div>
       <div className="lg-static-buffer-status" role="status">
         <span className="lg-chip" data-tone="accent">static BufferGeometry</span>
+        {fallbackReason ? <span className="lg-chip" data-tone="warning">SVG fallback</span> : null}
         {edgeRenderSource.kind === 'typed' ? <span className="lg-chip" data-tone="accent">{edgeRenderSource.buffer.sourceLabel ?? 'typed edge indices'}</span> : null}
         <span className="lg-chip" data-tone={payload.layout_mode === 'circular' || payload.layout_mode === 'spherical' ? 'accent' : undefined}>{staticLayoutLabel(payload.layout_mode)}</span>
         <span className="lg-chip">{renderStats.text}</span>
@@ -505,19 +687,24 @@ function mountStaticScene(
   focusLines.renderOrder = 4;
   group.add(focusLines);
 
-  const initialRotation = staticInitialRotation(payload.layout_mode);
-  group.rotation.set(initialRotation.x, initialRotation.y, initialRotation.z);
-  pickGroup.rotation.copy(group.rotation);
   const initialCameraPosition = staticCameraPosition(maxDistance, payload.layout_mode);
   const initialCameraUp = staticCameraUp(payload.layout_mode);
   camera.up.set(initialCameraUp.x, initialCameraUp.y, initialCameraUp.z);
   camera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
   camera.lookAt(0, 0, 0);
 
-  let dragging = false;
-  let movedDuringDrag = false;
-  let lastX = 0;
-  let lastY = 0;
+  // OrbitControls (camera-orbit instead of group-rotate) — gimbal-lock free,
+  // gives the user full directional freedom plus standard zoom/pan.
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 240;
+  controls.maxDistance = Math.max(maxDistance * 5.5, 2000);
+  controls.target.set(0, 0, 0);
+  controls.update();
+
+  let pointerDownX = 0;
+  let pointerDownY = 0;
   let renderFrame: number | null = null;
   const hitVector = new THREE.Vector3();
   const pickTarget = new THREE.WebGLRenderTarget(dimensions.width, dimensions.height, {
@@ -644,44 +831,22 @@ function mountStaticScene(
   };
 
   const onPointerDown = (event: PointerEvent) => {
-    dragging = true;
-    movedDuringDrag = false;
-    lastX = event.clientX;
-    lastY = event.clientY;
-    renderer.domElement.setPointerCapture?.(event.pointerId);
-  };
-  const onPointerMove = (event: PointerEvent) => {
-    if (!dragging) return;
-    const dx = event.clientX - lastX;
-    const dy = event.clientY - lastY;
-    lastX = event.clientX;
-    lastY = event.clientY;
-    if (Math.abs(dx) + Math.abs(dy) > 3) movedDuringDrag = true;
-    group.rotation.y += dx * 0.0045;
-    group.rotation.x += dy * 0.0035;
-    pickGroup.rotation.copy(group.rotation);
-    render();
+    pointerDownX = event.clientX;
+    pointerDownY = event.clientY;
   };
   const onPointerUp = (event: PointerEvent) => {
-    if (!movedDuringDrag && onSelectNode) {
-      const node = gpuPickNode(event.clientX, event.clientY) ?? hitTestNode(event.clientX, event.clientY);
-      if (node) onSelectNode(node);
-    }
-    dragging = false;
-    renderer.domElement.releasePointerCapture?.(event.pointerId);
+    if (!onSelectNode) return;
+    const moved = Math.hypot(event.clientX - pointerDownX, event.clientY - pointerDownY);
+    if (moved >= 4) return;
+    const node = gpuPickNode(event.clientX, event.clientY) ?? hitTestNode(event.clientX, event.clientY);
+    if (node) onSelectNode(node);
   };
-  const onWheel = (event: WheelEvent) => {
-    event.preventDefault();
-    const nextDistance = camera.position.length() * (event.deltaY > 0 ? 1.09 : 0.91);
-    camera.position.setLength(Math.max(240, Math.min(maxDistance * 5.5, nextDistance)));
-    render();
-  };
+  // OrbitControls fires 'change' on user input AND on damping ticks; route both
+  // through the rAF-batched render so we never tear or render twice per frame.
+  controls.addEventListener('change', render);
 
   renderer.domElement.addEventListener('pointerdown', onPointerDown);
-  renderer.domElement.addEventListener('pointermove', onPointerMove);
   renderer.domElement.addEventListener('pointerup', onPointerUp);
-  renderer.domElement.addEventListener('pointercancel', onPointerUp);
-  renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
 
   setStatus(`ready · ${payload.nodes.length.toLocaleString()} nodes · ${renderedEdgeCount.toLocaleString()} ${edgeSource.kind === 'typed' ? 'typed-index edges' : 'edges'}`);
   updateSelectedNode(selectedNodeId);
@@ -692,11 +857,10 @@ function mountStaticScene(
     updateEdgeStrength,
     dispose: () => {
       if (renderFrame !== null) window.cancelAnimationFrame(renderFrame);
+      controls.removeEventListener('change', render);
+      controls.dispose();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
-      renderer.domElement.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
-      renderer.domElement.removeEventListener('pointercancel', onPointerUp);
-      renderer.domElement.removeEventListener('wheel', onWheel);
       disposeObject(nodeGeometry);
       disposeObject(nodeMaterial);
       disposeObject(nodeTexture);

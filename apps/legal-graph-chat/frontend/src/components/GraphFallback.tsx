@@ -196,7 +196,7 @@ export function GraphFallback({
   };
 
   return (
-    <section className="lg-graph-viewport" data-edge-mode={edgeMode} aria-label={title}>
+    <section className="lg-graph-viewport lg-graph-fallback-viewport" data-edge-mode={edgeMode} aria-label={title}>
       <div className="lg-graph-toolbar" aria-label={`${title} toolbar`}>
         <div className="lg-graph-toolbar__group">
           <label className="lg-search-label">
@@ -242,97 +242,99 @@ export function GraphFallback({
         </div>
       </div>
 
-      {loading ? <div className="lg-graph-overlay" role="status">그래프 payload 로딩 중…</div> : null}
+      <div className="lg-graph-stage">
+        {loading ? <div className="lg-graph-overlay" role="status">그래프 payload 로딩 중…</div> : null}
 
-      {!layout || layout.nodes.length === 0 ? (
-        <div className="lg-empty-state">
-          <strong>{emptyText}</strong>
-          <span>backend slim API 응답을 기다립니다. 전체 graph.json은 직접 가져오지 않습니다.</span>
-        </div>
-      ) : useCanvas2d ? (
-        <LargeGraphCanvas title={title} layout={layout} selectedNodeId={selectedNodeId} onSelectNode={selectNodeIfChanged} edgeStrength={edgeStrength} />
-      ) : (
-        <svg className="lg-graph-svg" viewBox="0 0 980 580" role="img" aria-label={`${title}: ${layout.nodes.length} nodes, ${layout.edges.length} visible edges`}>
-          <defs>
-            <filter id="selectedGlow" x="-60%" y="-60%" width="220%" height="220%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-          <g className="lg-graph-edges" aria-hidden="true">
-            {layout.edges.map((edge) => (
-              <line
-                key={edge.id ?? `${edge.source}-${edge.target}`}
-                x1={edge.sourceNode.px}
-                y1={edge.sourceNode.py}
-                x2={edge.targetNode.px}
-                y2={edge.targetNode.py}
-                stroke="var(--lg-text-muted)"
-                strokeOpacity={edge.opacity}
-                strokeWidth={edge.width}
-                strokeDasharray={edge.dashed ? '4 5' : undefined}
-              />
-            ))}
-          </g>
-          <g className="lg-graph-nodes">
-            {layout.nodes.map((node) => {
-              const isSelected = node.id === selectedNodeId;
-              return (
-                <g
-                  key={node.id}
-                  className="lg-graph-node"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`${node.label} node 선택`}
-                  data-selected={isSelected}
-                  transform={`translate(${node.px} ${node.py})`}
-                  onClick={() => selectNodeIfChanged(node)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      selectNodeIfChanged(node);
-                    }
-                  }}
-                >
-                  <circle
-                    r={isSelected ? node.radius + 4 : node.radius}
-                    fill={node.colorVar}
-                    fillOpacity={node.source_file || node.path ? 0.92 : 0.52}
-                    stroke={isSelected ? 'var(--lg-accent)' : 'var(--lg-border)'}
-                    strokeWidth={isSelected ? 2.5 : 1}
-                    filter={isSelected ? 'url(#selectedGlow)' : undefined}
-                  />
-                  {(showLabels || isSelected) && (
-                    <text x={node.radius + 7} y="4" className="lg-graph-label">
-                      {node.label.slice(0, 38)}
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-          </g>
-        </svg>
-      )}
+        {!layout || layout.nodes.length === 0 ? (
+          <div className="lg-empty-state">
+            <strong>{emptyText}</strong>
+            <span>backend slim API 응답을 기다립니다. 전체 graph.json은 직접 가져오지 않습니다.</span>
+          </div>
+        ) : useCanvas2d ? (
+          <LargeGraphCanvas title={title} layout={layout} selectedNodeId={selectedNodeId} onSelectNode={selectNodeIfChanged} edgeStrength={edgeStrength} />
+        ) : (
+          <svg className="lg-graph-svg" viewBox="0 0 980 580" role="img" aria-label={`${title}: ${layout.nodes.length} nodes, ${layout.edges.length} visible edges`}>
+            <defs>
+              <filter id="selectedGlow" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            <g className="lg-graph-edges" aria-hidden="true">
+              {layout.edges.map((edge) => (
+                <line
+                  key={edge.id ?? `${edge.source}-${edge.target}`}
+                  x1={edge.sourceNode.px}
+                  y1={edge.sourceNode.py}
+                  x2={edge.targetNode.px}
+                  y2={edge.targetNode.py}
+                  stroke="var(--lg-text-muted)"
+                  strokeOpacity={edge.opacity}
+                  strokeWidth={edge.width}
+                  strokeDasharray={edge.dashed ? '4 5' : undefined}
+                />
+              ))}
+            </g>
+            <g className="lg-graph-nodes">
+              {layout.nodes.map((node) => {
+                const isSelected = node.id === selectedNodeId;
+                return (
+                  <g
+                    key={node.id}
+                    className="lg-graph-node"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${node.label} node 선택`}
+                    data-selected={isSelected}
+                    transform={`translate(${node.px} ${node.py})`}
+                    onClick={() => selectNodeIfChanged(node)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        selectNodeIfChanged(node);
+                      }
+                    }}
+                  >
+                    <circle
+                      r={isSelected ? node.radius + 4 : node.radius}
+                      fill={node.colorVar}
+                      fillOpacity={node.source_file || node.path ? 0.92 : 0.52}
+                      stroke={isSelected ? 'var(--lg-accent)' : 'var(--lg-border)'}
+                      strokeWidth={isSelected ? 2.5 : 1}
+                      filter={isSelected ? 'url(#selectedGlow)' : undefined}
+                    />
+                    {(showLabels || isSelected) && (
+                      <text x={node.radius + 7} y="4" className="lg-graph-label">
+                        {node.label.slice(0, 38)}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          </svg>
+        )}
 
-      {selectedNode ? (
-        <div className="lg-graph-selection lg-card">
-          <strong>{selectedNode.label}</strong>
-          <span>Community {selectedNode.community ?? '—'} · degree {selectedNode.degree ?? '—'}</span>
-          {selectedIsCommunity ? (
-            <>
-              <span>members {String(selectedNode.metadata?.member_count ?? selectedNode.degree ?? '—')} · edges {String(selectedNode.metadata?.edge_count ?? '—')}</span>
-              {selectedGodNodes.length ? <code>top: {selectedGodNodes.join(', ')}</code> : null}
-            </>
-          ) : (
-            <button type="button" className="lg-button" onClick={() => onExpandNode?.(selectedNode)} aria-label={`${selectedNode.label} 주변 subgraph 확장`}>
-              주변 subgraph 확장
-            </button>
-          )}
-        </div>
-      ) : null}
+        {selectedNode ? (
+          <div className="lg-graph-selection lg-card">
+            <strong>{selectedNode.label}</strong>
+            <span>Community {selectedNode.community ?? '—'} · degree {selectedNode.degree ?? '—'}</span>
+            {selectedIsCommunity ? (
+              <>
+                <span>members {String(selectedNode.metadata?.member_count ?? selectedNode.degree ?? '—')} · edges {String(selectedNode.metadata?.edge_count ?? '—')}</span>
+                {selectedGodNodes.length ? <code>top: {selectedGodNodes.join(', ')}</code> : null}
+              </>
+            ) : (
+              <button type="button" className="lg-button" onClick={() => onExpandNode?.(selectedNode)} aria-label={`${selectedNode.label} 주변 subgraph 확장`}>
+                주변 subgraph 확장
+              </button>
+            )}
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }

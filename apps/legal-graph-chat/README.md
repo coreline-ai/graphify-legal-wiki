@@ -35,6 +35,8 @@ Important defaults:
 - `LEGAL_GRAPH_SOURCE_VIEWER_ENABLED=true`
 - `LEGAL_GRAPH_PRECEDENT_ROOT=../../data/precedent-kr` from app root, or `../../../data/precedent-kr` from backend root
 - `LEGAL_GRAPH_LLM_ENABLED=false`
+- `LEGAL_GRAPH_METRICS_ENABLED=true`
+- `LEGAL_GRAPH_METRICS_PUBLIC=false` — `/metrics` follows auth by default; expose it publicly only behind a trusted private scrape path.
 
 The current local run command still passes host/port to `uvicorn` directly. Treat the env files as the shared configuration contract for the backend/frontend/deployment workstreams, and do not commit real secrets in `.env`.
 
@@ -155,7 +157,7 @@ Answer and precedent follow-up API contract:
 - Full 3D Graph is opt-in, lazy-loaded, and starts with `edge_mode=hidden`.
 - `precedent-kr` Full 3D uses bounded sampled/static payloads by default; raw all-edge direct loading is intentionally not exposed in the GUI because the graph is much larger than the 법령 graph.
 - Full 3D static coordinates support `static_layout_mode=clustered|circular|spherical`; the frontend requests `spherical` by default so the safe/raw overview reads as a round 3D node-link graph instead of a clustered slab.
-- Full 3D all-edge mode needs a second explicit confirmation before requesting `176,128` edges.
+- Full 3D all-edge mode needs a second explicit confirmation before requesting `177,576` edges.
 - 3D graph panels use lazy WebGL rendering: bounded subgraphs can use `react-force-graph-3d`, while large Full 3D payloads use a static `BufferGeometry` renderer with DOM/SVG fallback and `3D / 2D / evidence` view switching.
 - 3D search can focus the first matching node, and Community Overview selection opens member/edge counts, top God Nodes, wiki article access, and limited community 3D exploration.
 - Browser must never fetch raw `graph.json` directly.
@@ -177,6 +179,7 @@ Operational defaults:
 - Mount `data/precedent-kr/` as a read-only corpus volume.
 - Put any non-localhost deployment behind an auth proxy/private network gateway; the deploy scaffold publishes only nginx and keeps backend/Postgres internal.
 - Treat `/source` and `/precedents/source` as read-only, path-whitelisted previewers.
+- Keep `/metrics` internal. By default it follows `LEGAL_GRAPH_AUTH_REQUIRED`; set `LEGAL_GRAPH_METRICS_PUBLIC=true` only when an ingress/private network already restricts scrapers.
 - Keep `LEGAL_GRAPH_LLM_ENABLED=false` unless source-grounding, provider secrets, logging, and disclaimers have been reviewed.
 - `LEGAL_GRAPH_PRECEDENT_ROOT` defaults to the repository `data/precedent-kr` directory when unset; set it explicitly for mounted corpus volumes.
 
@@ -185,7 +188,7 @@ Operational defaults:
 `data/legalize-kr/graphify-out/run-summary.json` should report:
 
 ```text
-9,001 nodes · 176,128 edges · 12 communities · deterministic_legal_reference
+9,299 nodes · 177,576 edges · 21 communities · deterministic_legal_reference
 ```
 
 ## QA / verification automation

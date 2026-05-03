@@ -39,8 +39,8 @@ FastAPI + React 기반 인터랙티브 채팅 인터페이스로 탐색합니다
            ▼  (No LLM · $0)              ▼
 ┌──────────────────────┬──────────────────────────────────────────┐
 │  graphify-out/       │  graphify-out/                           │
-│  9,001 nodes         │  124,263 nodes                           │
-│  176,128 edges       │  746,287 edges                           │
+│  9,299 nodes         │  124,263 nodes                           │
+│  177,576 edges       │  761,900 edges                           │
 │  12 communities      │  72 communities                          │
 └──────────┬───────────┴──────────────────┬───────────────────────┘
            │                              │
@@ -77,8 +77,8 @@ FastAPI + React 기반 인터랙티브 채팅 인터페이스로 탐색합니다
 |------|------|
 | 입력 파일 | 5,665개 법령 `.md` |
 | 총 단어 수 | 23,519,468 |
-| 노드 | 9,001 |
-| 엣지 | 176,128 |
+| 노드 | 9,299 |
+| 엣지 | 177,576 |
 | 커뮤니티 | 12개 (소관부처 기준) |
 | 참조 매칭 | 375,633개 `「법령명」` |
 | Wiki 아티클 | 25개 |
@@ -91,7 +91,7 @@ FastAPI + React 기반 인터랙티브 채팅 인터페이스로 탐색합니다
 | 입력 파일 | 123,558개 판례 `.md` |
 | 사건 종류 | 민사 · 형사 · 세무 · 일반행정 · 가사 · 특허 · 선거 |
 | 노드 | 124,263 |
-| 엣지 | 746,287 |
+| 엣지 | 761,900 |
 | 커뮤니티 | 72개 (사건종류 기준) |
 | 판례→판례 인용 | 244,504개 (`선고 사건번호 판결` 패턴) |
 | 법령 참조 허브 | 483개 (≥100회 인용 법령) |
@@ -381,6 +381,8 @@ docker compose -f deploy/compose.prod.yml up -d
 | `LEGAL_GRAPH_PRECEDENT_SOURCE_VIEWER_ENABLED` | `true` | 판례 원문 뷰어 활성화 |
 | `LEGAL_GRAPH_SOURCE_MAX_CHARS` | `40000` | 원문 조회 최대 글자 수 |
 | `LEGAL_GRAPH_AUTH_REQUIRED` | `false` | 프록시 인증 필요 여부 |
+| `LEGAL_GRAPH_METRICS_ENABLED` | `true` | Prometheus `/metrics` 엔드포인트 활성화 |
+| `LEGAL_GRAPH_METRICS_PUBLIC` | `false` | `/metrics`를 인증 우회 공개 경로로 둘지 여부. 기본값은 인증 정책을 따름 |
 | `CORELINE_CODEX_API_KEY` | — | LLM 답변 생성용 API 키 |
 
 ---
@@ -481,7 +483,7 @@ Building precedent case nodes …
 Matching case-to-case citation edges …
 Building external law reference hubs …
   483 law hubs created (≥100 mentions).
-Extraction done: 124,263 nodes · 746,650 edges
+Extraction done: 124,263 nodes · 761,900 edges
 ```
 
 **`ModuleNotFoundError: No module named 'yaml'`**

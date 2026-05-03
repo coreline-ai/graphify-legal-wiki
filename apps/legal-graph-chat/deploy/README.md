@@ -87,6 +87,7 @@ The `.env.production.example` mirrors these values for runbooks. If changing rat
 
 - Do not expose backend, Postgres, or Coreline proxy ports to the host.
 - Do not mount `~/.codex/auth.json` into the backend or frontend. If the optional proxy is used, mount Codex auth only into the proxy container.
+- Keep `/api/metrics` internal. The backend `/metrics` endpoint follows auth by default; set `LEGAL_GRAPH_METRICS_PUBLIC=true` only for a trusted private scrape network.
 - Keep LLM mode disabled until provider secrets, source-grounding, rate limits, logs, and legal disclaimers are reviewed.
 - Keep source viewers authenticated, path-whitelisted, truncated, and backed by read-only corpus mounts.
 - Prefer an external TLS terminator/load balancer in front of this Compose stack; this nginx scaffold listens plain HTTP inside that boundary.

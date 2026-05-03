@@ -27,6 +27,7 @@ from pathlib import Path
 import hashlib
 import json
 import math
+import os
 import re
 import shutil
 import sys
@@ -43,6 +44,7 @@ from graphify.cluster import cluster, score_all
 from graphify.analyze import god_nodes, surprising_connections, suggest_questions
 from graphify.report import generate
 from graphify.export import to_json, to_html
+from graphify.normalize import normalize_text
 from graphify.wiki import to_wiki
 
 ROOT = REPO / "data" / "precedent-kr"
@@ -106,16 +108,12 @@ def stable_id(prefix: str, text: str, n: int = 12) -> str:
 
 def norm_law(s: str) -> str:
     """Normalise a law name: remove spaces, parens, quotes."""
-    s = (s or "").strip()
-    s = re.sub(r"\([^)]*\)", "", s)
-    s = re.sub(r"[「」『』《》〈〉\[\]`'\"""'']", "", s)
-    s = SPACE_RE.sub("", s)
-    return s[:60]  # cap length
+    return normalize_text(s, strategy="law")
 
 
 def norm_case(s: str) -> str:
     """Normalise a case number for dedup matching."""
-    return SPACE_RE.sub("", (s or "").strip()).lower()
+    return normalize_text(s, strategy="case")
 
 
 def extract_case_number_tokens(raw: str) -> list[str]:
@@ -234,6 +232,12 @@ def node_base(node_id: str, label: str, file_type: str = "document",
 
 # ──────────────────────────── Reference extraction ────────────────────────────
 
+# Suffix-only tokens that the LAW_NAME_RE can match by accident — e.g. a bare
+# "령" picked up after a Korean prefix should not be treated as a law name.
+_LAW_NAME_DENYLIST = {"령", "법", "규칙", "규정"}
+_KOREAN_CHAR_RE = re.compile(r"[가-힣]")
+
+
 def extract_law_refs(body: str) -> list[str]:
     """Return raw law names cited as 'NAME 제N조' in body text."""
     names: list[str] = []
@@ -242,6 +246,13 @@ def extract_law_refs(body: str) -> list[str]:
         if SAME_LAW_RE.match(name):
             continue
         if len(name) < 2:
+            continue
+        # Post-process: reject suffix-only or too-short candidates that the
+        # broad regex can match (e.g. a bare "령" / "법" / "규칙" / "규정").
+        normalized = normalize_text(name, strategy="law")
+        if normalized in _LAW_NAME_DENYLIST:
+            continue
+        if len(_KOREAN_CHAR_RE.findall(normalized)) < 2:
             continue
         names.append(name)
     return names
@@ -704,9 +715,13 @@ def main() -> None:
         "unmatched_case_citations": sum(unmatched_case_refs.values()),
         "output_dir": str(OUT),
     }
-    (OUT / "run-summary.json").write_text(
+    # Atomic write: backend reads run-summary.json, prevent partial reads.
+    summary_path = OUT / "run-summary.json"
+    summary_tmp = summary_path.with_suffix(summary_path.suffix + ".tmp")
+    summary_tmp.write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    os.replace(summary_tmp, summary_path)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 

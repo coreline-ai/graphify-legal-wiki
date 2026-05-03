@@ -14,6 +14,7 @@ import type {
 } from "react";
 import {
   ApiError,
+  disposeGraphBinaryWorker,
   getCommunities3d,
   getExplain,
   getFullGraph3dWithWorker,
@@ -711,6 +712,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const handler = () => {
+      disposeGraphBinaryWorker();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => {
+      window.removeEventListener("beforeunload", handler);
+      handler();
+    };
+  }, []);
+
+  useEffect(() => {
     void refreshHealth(activeGraphKey);
     const controller = nextController("suggestions");
     getSuggestedQuestions(controller.signal, activeGraphKey)
@@ -968,10 +980,16 @@ export default function App() {
 
   function applyFullGraphEdgeCapMode(mode: FullGraphEdgeCapMode) {
     const cap = edgeCapForMode(mode);
+    const previousCap = fullEdgeTiles.visibleEdgeCap;
     const truncated = truncateStaticEdgeBuffer(fullGraphEdgeBuffer, cap);
     const loadedEdges = staticEdgeBufferCount(truncated);
     setFullGraphEdgeBuffer(truncated);
     setPrefetchedEdgeTile(null);
+    // When the cap is raised, auto-enable prefetch so the buffer actually fills
+    // toward the new ceiling. Without this the selector silently no-ops on the
+    // viewport ("cap 100k → 250k 차이가 없어"). Lowering the cap keeps the
+    // current prefetch setting since the truncation already reflects intent.
+    const shouldAutoStream = cap > previousCap && loadedEdges < cap;
     setFullEdgeTiles((current) => ({
       ...current,
       visibleEdgeCap: cap,
@@ -979,11 +997,14 @@ export default function App() {
       experimentalFullEdgesEnabled: mode === "experimental",
       loadedEdges,
       hasMore: loadedEdges < (current.totalEdges ?? fullGraphExperimentalEdgeCap),
-      prefetchStatus: current.prefetchEnabled ? "idle" : "off",
+      prefetchEnabled: shouldAutoStream ? true : current.prefetchEnabled,
+      prefetchStatus: shouldAutoStream || current.prefetchEnabled ? "idle" : "off",
       prefetchPausedReason: "",
       prefetchedTile: null,
       prefetchedEdges: 0,
-      status: `edge memory cap을 ${edgeCapLabel(mode)} ${cap.toLocaleString()} edges로 변경했습니다.${loadedEdges < staticEdgeBufferCount(fullGraphEdgeBuffer) ? " 초과분은 evict했습니다." : ""}`,
+      status: shouldAutoStream
+        ? `edge memory cap을 ${edgeCapLabel(mode)} ${cap.toLocaleString()} edges로 올렸습니다. prefetch를 자동 활성화하여 cap까지 채웁니다.`
+        : `edge memory cap을 ${edgeCapLabel(mode)} ${cap.toLocaleString()} edges로 변경했습니다.${loadedEdges < staticEdgeBufferCount(fullGraphEdgeBuffer) ? " 초과분은 evict했습니다." : ""}`,
     }));
   }
 

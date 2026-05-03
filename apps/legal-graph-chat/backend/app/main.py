@@ -15,6 +15,15 @@ from .models import AnswerRequest, ApiError, EdgeMode, LayoutMode, QueryRequest
 from .rate_limit import InProcessTokenBucketRateLimiter
 from .service import GraphLoadError, GraphQueryService, default_paths, normalize_graph_key, supported_graph_keys
 
+try:
+    from .metrics import REQUESTS_TOTAL, REQUEST_DURATION_SECONDS, render_metrics
+    _METRICS_ENABLED = True
+except ImportError:  # prometheus_client not installed; metrics endpoint disabled.
+    REQUESTS_TOTAL = None  # type: ignore[assignment]
+    REQUEST_DURATION_SECONDS = None  # type: ignore[assignment]
+    render_metrics = None  # type: ignore[assignment]
+    _METRICS_ENABLED = False
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("legal_graph_chat.api")
 
@@ -120,6 +129,14 @@ def trusted_proxy_header_name() -> str:
     return os.environ.get("LEGAL_GRAPH_TRUSTED_PROXY_HEADER", "X-Forwarded-User").strip() or "X-Forwarded-User"
 
 
+def metrics_enabled() -> bool:
+    return _METRICS_ENABLED and env_bool("LEGAL_GRAPH_METRICS_ENABLED", default=True)
+
+
+def metrics_public() -> bool:
+    return env_bool("LEGAL_GRAPH_METRICS_PUBLIC", default=False)
+
+
 def is_sensitive_or_mutating(request: Request) -> bool:
     if request.method in {"OPTIONS", "HEAD"}:
         return False
@@ -133,6 +150,7 @@ def is_sensitive_or_mutating(request: Request) -> bool:
         "/graph/full-3d/edge-tile/binary",
         "/graph/full-3d/binary",
         "/graph/full-3d/nodes/binary",
+        "/metrics",
     }
 
 
@@ -147,6 +165,10 @@ def request_identity(request: Request) -> str:
 
 @app.middleware("http")
 async def auth_and_rate_limit(request: Request, call_next):
+    if request.url.path == "/metrics" and metrics_public():
+        # Explicit opt-in for deployments that expose metrics only on a trusted
+        # private interface. By default /metrics follows auth/rate-limit policy.
+        return await call_next(request)
     if request.method != "OPTIONS" and env_bool("LEGAL_GRAPH_AUTH_REQUIRED", default=False) and is_sensitive_or_mutating(request):
         header = trusted_proxy_header_name()
         if not request.headers.get(header, "").strip():
@@ -182,11 +204,29 @@ async def auth_and_rate_limit(request: Request, call_next):
 async def request_metrics(request: Request, call_next):
     start = time.perf_counter()
     response = await call_next(request)
-    duration_ms = (time.perf_counter() - start) * 1000
+    elapsed = time.perf_counter() - start
+    duration_ms = elapsed * 1000
     response.headers["X-Process-Time-Ms"] = f"{duration_ms:.1f}"
     if request.method != "OPTIONS":
         logger.info("%s %s -> %s %.1fms", request.method, request.url.path, response.status_code, duration_ms)
+    if _METRICS_ENABLED:
+        route = request.scope.get("route")
+        path_template = getattr(route, "path", None) or "unknown"
+        try:
+            REQUESTS_TOTAL.labels(method=request.method, path=path_template, status=str(response.status_code)).inc()
+            REQUEST_DURATION_SECONDS.labels(method=request.method, path=path_template).observe(elapsed)
+        except Exception:  # pragma: no cover - never let metrics break a real request
+            logger.debug("metrics recording failed", exc_info=True)
     return response
+
+
+if _METRICS_ENABLED:
+    @app.get("/metrics")
+    def metrics_endpoint() -> Response:
+        if not metrics_enabled():
+            raise HTTPException(status_code=404, detail="metrics disabled")
+        body, content_type = render_metrics()
+        return Response(content=body, media_type=content_type)
 
 
 @app.exception_handler(GraphLoadError)

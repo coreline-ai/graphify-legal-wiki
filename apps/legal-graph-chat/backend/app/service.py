@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import gzip
 import json
+import logging
 import math
 import os
 import re
 import shutil
 import struct
 import subprocess
+import time
 from collections import Counter, deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -526,15 +528,31 @@ class GraphQueryService:
         graph_path = self.paths.graph_path
         if not graph_path.exists():
             raise GraphLoadError(f"graph.json not found: {graph_path}")
-        mtime = graph_path.stat().st_mtime
+        stat = graph_path.stat()
+        mtime = stat.st_mtime
         if self._graph is not None and self._graph_mtime == mtime:
             return
+        # Defense-in-depth against non-atomic writes: ensure file is stable before parsing.
+        time.sleep(0.05)
+        stat2 = graph_path.stat()
+        if stat2.st_mtime != mtime or stat2.st_size != stat.st_size:
+            if self._graph is not None:
+                return  # writer still active; keep serving the previously loaded graph
+            raise GraphLoadError("graph.json is being written; retry shortly")
         try:
             data = json.loads(graph_path.read_text(encoding="utf-8"))
             try:
                 graph = json_graph.node_link_graph(data, edges="links")
             except TypeError:
                 graph = json_graph.node_link_graph(data)
+        except json.JSONDecodeError as exc:
+            # Partial write detected; keep previous graph and retry on next access.
+            logging.getLogger(__name__).warning(
+                "graph.json parse failed (%s); keeping previously loaded graph", exc
+            )
+            if self._graph is not None:
+                return
+            raise GraphLoadError(f"graph.json is malformed: {exc}") from exc
         except Exception as exc:  # noqa: BLE001 - convert to recoverable API error
             raise GraphLoadError(f"graph.json is malformed: {exc}") from exc
         self._graph = graph
@@ -1584,10 +1602,12 @@ class GraphQueryService:
             nodes_hash.update(b"\0")
         digest = nodes_hash.hexdigest()[:20]
         safe_graph_token = re.sub(r"[^0-9A-Za-z_.-]+", "-", str(graph_token))[:40]
+        # Bump the suffix when any layout algorithm changes so stale on-disk
+        # coordinates are not served after a deploy.
         return (
             self._cache_root
             / "layouts"
-            / f"{self.paths.graph_key}-{safe_graph_token}-{layout_mode}-{len(nodes)}-{digest}.json.gz"
+            / f"{self.paths.graph_key}-{safe_graph_token}-{layout_mode}-v6-{len(nodes)}-{digest}.json.gz"
         )
 
     def _cached_full_graph_layout_positions(self, nodes: list[str], layout_mode: LayoutMode) -> tuple[dict[str, tuple[float, float, float]], list[str]]:
