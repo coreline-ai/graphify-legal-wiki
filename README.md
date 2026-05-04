@@ -25,6 +25,32 @@ FastAPI + React 기반 인터랙티브 채팅 인터페이스로 탐색합니다
 
 ---
 
+## 📸 스크린샷
+
+<div align="center">
+
+<img src="./docs/screenshots/webapp-overview.png" alt="Legal Graph Chat — 메인 채팅 화면" width="900" /><br/>
+<sub><b>메인 채팅 화면</b> · 좌측 그래프 셀렉터(법령/판례) + 헬스 카드 + 추천 질문, 중앙 source-grounded answer 패널, 우측 evidence/source 뷰어</sub>
+
+<br/><br/>
+
+<table>
+<tr>
+<td align="center" width="50%">
+<img src="./docs/screenshots/full3d-legalize-sampled.png" alt="법령 그래프 Full 3D" width="100%" /><br/>
+<sub><b>법령 3D 그래프</b><br/>9,299 nodes · 177,576 edges · 21 communities<br/>spherical 3D layout · sampled 1,500 노드 / 12,000 edges</sub>
+</td>
+<td align="center" width="50%">
+<img src="./docs/screenshots/full3d-precedent-sampled.png" alt="판례 그래프 Full 3D" width="100%" /><br/>
+<sub><b>판례 3D 그래프</b><br/>124,263 nodes · 761,900 edges · 77 communities<br/>spherical 3D layout · sampled 2,500 노드 / 12,000 edges</sub>
+</td>
+</tr>
+</table>
+
+</div>
+
+---
+
 ## 개요
 
 ```text
